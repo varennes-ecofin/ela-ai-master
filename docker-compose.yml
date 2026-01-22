@@ -1,0 +1,14 @@
+services:
+  ela-ai:
+    build: .
+    container_name: ela_bot
+    restart: always
+    ports:
+      - "80:8000"
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./public:/app/public
+      - ./.env:/app/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
