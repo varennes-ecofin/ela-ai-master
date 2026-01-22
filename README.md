@@ -98,10 +98,8 @@ L'interface sera accessible à : **http://localhost:8000**
 
 | Utilisateur | Mot de passe |
 |-------------|--------------|
-| `etudiant` | `master_esa_2025` |
-| `professeur` | `admin123` |
-
-⚠️ **Modifiez ces identifiants** dans `app.py` pour la production !
+| `etudiant` | `*********` |
+| `professeur` | `*********` |
 
 ### Mode CLI (optionnel)
 
