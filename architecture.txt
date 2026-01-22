@@ -1,0 +1,5 @@
+ela_ai_project/
+├── chroma_db/         # Sera créé automatiquement par le script
+├── latex/             # Placez vos fichiers .tex ici (ex: UTS_C1.tex)
+├── ingest.py          # Le script ci-dessous
+└── requirements.txt   # Pour gérer les dépendances
