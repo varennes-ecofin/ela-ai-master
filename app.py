@@ -1,14 +1,37 @@
+import os
 import chainlit as cl
 
 from main_ela import ELA_Bot
 
 # chainlit run app.py -w 
 
+def load_users_from_env():
+    """
+    Charge les utilisateurs depuis la variable d'env ELA_AUTH_DATA.
+    Format attendu : "user1:pass1,user2:pass2"
+    """
+    users_dict = {}
+    # On récupère la chaîne brute, ou une chaîne vide si elle n'existe pas
+    raw_data = os.environ.get("ELA_AUTH_DATA", "")
+    
+    if not raw_data:
+        print("⚠️ AVERTISSEMENT : Aucun utilisateur configuré dans .env")
+        return users_dict
+
+    # On découpe par virgule pour avoir chaque couple
+    pairs = raw_data.split(",")
+    
+    for pair in pairs:
+        # On découpe chaque couple par les deux-points
+        if ":" in pair:
+            # .strip() enlève les espaces accidentels
+            username, password = pair.split(":", 1) 
+            users_dict[username.strip()] = password.strip()
+            
+    return users_dict
+
 # --- 1. CONFIGURATION DE L'AUTHENTIFICATION ---
-USERS = {
-    "etudiant": "master_esa_2025",
-    "professeur": "admin123"
-}
+USERS = load_users_from_env()
 
 @cl.author_rename
 def rename(orig_author: str):
