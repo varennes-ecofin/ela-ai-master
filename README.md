@@ -8,7 +8,7 @@ ELA AI est un assistant d'apprentissage intelligent spécialisé en économétri
 1.  **RAG (Retrieval-Augmented Generation)** : Pour répondre aux questions théoriques en se basant exclusivement sur des supports de cours LaTeX.
 2.  **Vision par Ordinateur** : Pour analyser et expliquer des graphiques, tableaux ou équations manuscrites via des modèles multimodaux.
 
-Le projet est désormais conçu pour la production avec une architecture conteneurisée (**Docker**) et une base de données persistante (**PostgreSQL**).
+Le projet est conçu pour la production avec une architecture conteneurisée (**Docker**) et une base de données persistante (**PostgreSQL**).
 
 ### ✨ Fonctionnalités principales
 
