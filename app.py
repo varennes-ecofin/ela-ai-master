@@ -1,5 +1,6 @@
 # app.py
 import os
+import re
 import sys
 import asyncio
 import aiofiles
@@ -164,14 +165,102 @@ async def on_chat_resume(thread: ThreadDict):
 async def main(message: cl.Message):
     ela_bot = cl.user_session.get("ela_bot")
     
+    # 1. GESTION DES COMMANDES SPÉCIALES
+
+    # A. Démarrage du Quiz
+    if message.content == "/start_quiz":
+        # --- RENOMMAGE 1 : Immédiat ---
+        await rename_current_thread("🎓 Nouveau Quiz") 
+        
+        await cl.Message(content="🎓 **Mode Quiz activé !**\nSur quel concept du cours voulez-vous vous tester ? (ex: *MCO, Séries Temporelles, Tests de racine unitaire...*)").send()
+        cl.user_session.set("quiz_mode", "waiting_topic")
+        return
+    
+    # B. Galerie
     if message.content.strip().lower() == "/gallery":
         await show_user_gallery()
         return
     
-    # 1. Gestion des Images
+    # C. Atelier Code
+    if message.content == "/code_workshop":
+        # Renommage
+        await rename_current_thread("💻 Atelier Code")
+        
+        # Actions pour choisir le langage
+        actions = [
+            cl.Action(name="code_lang", value="Python", label="Python", payload={"value": "Python"}),
+            cl.Action(name="code_lang", value="R", label="R", payload={"value": "R"})
+        ]
+        
+        await cl.Message(
+            content="💻 **Bienvenue dans l'Atelier Code !**\n\nJe peux générer pour vous des exemples pratiques basés sur vos cours.\nQuel langage souhaitez-vous utiliser ?",
+            actions=actions
+        ).send()
+        return
+    
+    # 2. LOGIQUE DU QUIZ (Machine à états)
+    # ------------------------------------
+    quiz_mode = cl.user_session.get("quiz_mode")
+
+    # ÉTAT 2.1 : L'utilisateur donne le sujet
+    if quiz_mode == "waiting_topic":
+        topic = message.content
+        
+        # --- RENOMMAGE 2 : Avec le sujet ---
+        # On limite la taille du titre pour que ça rentre dans la sidebar
+        safe_topic = (topic[:25] + '..') if len(topic) > 25 else topic
+        await rename_current_thread(f"🎓 Quiz : {safe_topic}")
+
+        msg_wait = cl.Message(content=f"🔍 Analyse de vos cours sur **{topic}** et génération des questions...")
+        await msg_wait.send()
+        
+        # Génération via le Bot
+        quiz_data = await ela_bot.generate_quiz_json(topic, num_questions=3)
+        
+        if not quiz_data:
+            await msg_wait.update(content="⚠️ Je n'ai pas trouvé assez d'informations dans le cours pour ce sujet. Essayez un autre terme.")
+            return
+
+        # On stocke le quiz
+        cl.user_session.set("quiz_data", quiz_data)
+        cl.user_session.set("quiz_index", 0) 
+        cl.user_session.set("quiz_score", 0)
+        cl.user_session.set("quiz_mode", "active")
+        
+        # On lance la première question
+        await ask_next_question()
+        return
+
+    # ÉTAT 2.2 : Si l'utilisateur répond à une question en tapant du texte
+    if quiz_mode == "active":
+        # Note : On n'a pas besoin de récupérer quiz_data ici car on renvoie juste un message d'aide
+        
+        await cl.Message(content="💡 Utilisez les boutons ci-dessus pour répondre !").send()
+        return
+    
+    # 3. GESTION DU CODE WORKSHOP
+    if cl.user_session.get("code_mode") == "waiting_topic":
+        topic = message.content
+        language = cl.user_session.get("code_lang_choice")
+        
+        await rename_current_thread(f"💻 Code : {topic}")
+        
+        msg_load = cl.Message(content=f"⚙️ Génération du script **{language}** pour **{topic}**...")
+        await msg_load.send()
+        
+        response = await ela_bot.generate_practical_code(topic, language)
+        
+        msg_load.content = response
+        await msg_load.update()
+        
+        # Fin du mode code, retour au chat normal
+        cl.user_session.set("code_mode", None)
+        return
+    
+    # 4. GESTION DES IMAGES
     image_path = None
     
-    # Vérifier s'il y a des fichiers attachés
+    # 4.1 Vérifier s'il y a des fichiers attachés
     if message.elements:
         # On prend le premier fichier (on pourrait gérer une boucle pour plusieurs)
         file = message.elements[0]
@@ -184,7 +273,7 @@ async def main(message: cl.Message):
             await cl.Message(content="⚠️ Désolé, je n'accepte que les images (.png, .jpg, .jpeg).").send()
             return
 
-    # 2. Reconstruction Historique (inchangé)
+    # 4.2 Reconstruction Historique (inchangé)
     context_messages = cl.chat_context.get()
     history_langchain = []
     
@@ -200,7 +289,7 @@ async def main(message: cl.Message):
     
     msg = cl.Message(content="", author="ELA 🤖")
     
-    # 3. Appel à ELA avec l'image (si présente)
+    # 4.3 Appel à ELA avec l'image (si présente)
     # On passe le chemin local de l'image
     response = await ela_bot.ask(
         question=message.content, 
@@ -211,6 +300,7 @@ async def main(message: cl.Message):
     msg.content = response
     await msg.send()
     
+# --- FONCTIONS UTILITAIRES POUR LA GALLERIE ---
 async def show_user_gallery():
     """Affiche la galerie et renomme la conversation."""
     user = cl.user_session.get("user")
@@ -231,7 +321,7 @@ async def show_user_gallery():
                 update_query = text('UPDATE threads SET name = :name WHERE id = :id')
                 # On utilise ::uuid pour être sûr que Postgres comprenne le format
                 await session.execute(update_query, {
-                    "name": "Mes contenus médias", 
+                    "name": "🖼️ Mes contenus médias", 
                     "id": thread_id
                 })
                 await session.commit() # Important pour valider le changement
@@ -297,7 +387,122 @@ async def set_starters():
         ),
         cl.Starter(
             label="Générer un quiz",
-            message="Comment écrire une matrice en LaTeX ?",
+            message="/start_quiz",
             icon="/public/quiz.svg",
+        ),
+        cl.Starter(
+            label="Atelier Code",
+            message="/code_workshop",
+            icon="/public/terminal.svg",
         )
+
     ]
+    
+# --- FONCTIONS UTILITAIRES POUR LE QUIZ ---
+async def ask_next_question():
+    """Affiche la question actuelle sous forme de message avec boutons."""
+    quiz_data = cl.user_session.get("quiz_data")
+    index = cl.user_session.get("quiz_index")
+    
+    if index >= len(quiz_data):
+        score = cl.user_session.get("quiz_score")
+        await cl.Message(content=f"🏁 **Quiz terminé !**\nVotre score : {score}/{len(quiz_data)}\n\nPosez une autre question ou tapez `/start_quiz` pour recommencer.").send()
+        cl.user_session.set("quiz_mode", None)
+        return
+
+    q = quiz_data[index]
+    
+    actions = []
+    letters = ["A", "B", "C", "D"]
+    num_options = min(len(q["options"]), 4) 
+
+    for i in range(num_options):
+        raw_option = q["options"][i]
+        
+        # --- CORRECTION DOUBLES LETTRES ---
+        # On utilise une expression régulière (Regex) pour supprimer "A)", "A.", "1." au début
+        # Cela garde juste le texte de la réponse.
+        clean_option = re.sub(r'^[A-D0-9][\)\.]\s*', '', raw_option).strip()
+        
+        actions.append(
+            cl.Action(
+                name="quiz_answer",
+                payload={"value": str(i)}, # On stocke bien la valeur ici
+                label=f"{letters[i]}) {clean_option}", 
+                description="Cliquez pour choisir"
+            )
+        )
+
+    await cl.Message(
+        content=f"**Question {index + 1}/{len(quiz_data)}**\n\n{q['question']}",
+        actions=actions
+    ).send()
+    
+@cl.action_callback("quiz_answer")
+async def on_quiz_answer(action: cl.Action):
+    """Gère le clic sur un bouton de réponse."""
+    quiz_data = cl.user_session.get("quiz_data")
+    index = cl.user_session.get("quiz_index")
+    score = cl.user_session.get("quiz_score")
+    
+    # --- CORRECTION DU CRASH ---
+    # Au lieu de action.value, on lit le payload
+    user_idx = int(action.payload["value"])
+    
+    current_q = quiz_data[index]
+    correct_idx = current_q["correct_index"]
+    
+    # Feedback
+    if user_idx == correct_idx:
+        score += 1
+        cl.user_session.set("quiz_score", score)
+        feedback = f"✅ **Correct !**\n_{current_q['explanation']}_"
+    else:
+        letters = ["A", "B", "C", "D"]
+        # On nettoie aussi l'affichage de la bonne réponse ici pour éviter les doublons
+        raw_correct = current_q['options'][correct_idx]
+        clean_correct = re.sub(r'^[A-D0-9][\)\.]\s*', '', raw_correct).strip()
+        
+        feedback = f"❌ **Incorrect.**\nLa bonne réponse était **{letters[correct_idx]}** : {clean_correct}.\n\n_{current_q['explanation']}_"
+
+    # Supprime les boutons précédents
+    await action.remove()
+    
+    await cl.Message(content=feedback).send()
+    
+    # Question suivante
+    cl.user_session.set("quiz_index", index + 1)
+    await asyncio.sleep(1)
+    await ask_next_question()
+    
+
+async def rename_current_thread(new_name: str):
+    """Renomme la conversation actuelle dans la base de données."""
+    thread_id = cl.context.session.thread_id
+    if not thread_id:
+        return
+
+    db_url = os.getenv("DATABASE_URL")
+    # Création moteur temporaire
+    engine = create_async_engine(db_url)
+    AsyncSessionLocal = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            query = text('UPDATE threads SET name = :name WHERE id = :id')
+            await session.execute(query, {"name": new_name, "id": thread_id})
+            await session.commit()
+    except Exception as e:
+        print(f"⚠️ Erreur renommage thread : {e}")
+    finally:
+        await engine.dispose()
+        
+@cl.action_callback("code_lang")
+async def on_code_lang(action: cl.Action):
+    lang = action.payload["value"]
+    cl.user_session.set("code_lang_choice", lang)
+    cl.user_session.set("code_mode", "waiting_topic")
+    
+    await action.remove()
+    
+    await cl.Message(content=f"C'est noté pour **{lang}** !\n\nQuel modèle ou concept voulez-vous implémenter ? (ex: *MCO, VAR, ARCH, Test de Student...*)").send()

@@ -1,5 +1,6 @@
 # main_ela.py
 import os
+import json
 import base64
 from dotenv import load_dotenv
 from typing import List
@@ -212,3 +213,96 @@ CONTEXTE DU COURS (Source unique) :
             
         except Exception as e:
             return f"❌ Erreur ELA Vision : {str(e)}"
+
+    # --- NOUVELLE MÉTHODE POUR LE QUIZ ---
+    async def generate_quiz_json(self, topic: str, num_questions: int = 3):
+        """
+        Génère une liste de questions QCM au format JSON basée sur le cours.
+        """
+        # 1. Récupération du contexte pertinent (RAG)
+        context_text = self._get_rag_context(topic)
+        
+        # 2. Prompt strict pour forcer le JSON
+        system_prompt = f"""Tu es un professeur expert en économétrie.
+        Ta tâche est de créer un quiz de {num_questions} questions (QCM) sur le sujet : "{topic}".
+        
+        RÈGLES STRICTES :
+        1. Base-toi UNIQUEMENT sur le CONTEXTE DU COURS fourni ci-dessous.
+        2. La sortie DOIT être un JSON valide (sans Markdown, sans texte avant/après).
+        3. Format attendu :
+        [
+            {{
+                "question": "Texte de la question ?",
+                "options": ["A) Réponse 1", "B) Réponse 2", "C) Réponse 3"],
+                "correct_index": 0,
+                "explanation": "Courte explication de pourquoi c'est la bonne réponse."
+            }},
+            ...
+        ]
+
+        CONTEXTE DU COURS :
+        {context_text}
+        """
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Génère le quiz sur {topic}.")
+        ]
+
+        try:
+            # Appel LLM avec paramètre pour forcer le JSON si le modèle le supporte (ou via prompt)
+            # Pour Groq/Llama, le prompt strict fonctionne généralement bien
+            response = await self.llm.ainvoke(messages)
+            content = response.content.strip()
+            
+            # Nettoyage si le LLM ajoute du markdown ```json ... ```
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].strip()
+
+            quiz_data = json.loads(content)
+            return quiz_data
+            
+        except Exception as e:
+            print(f"❌ Erreur génération Quiz : {e}")
+            # Fallback en cas d'erreur de parsing
+            return []   
+        
+
+    async def generate_practical_code(self, topic: str, language: str = "Python"):
+        """
+        Génère un exemple de code pratique basé sur la théorie du cours.
+        """
+        # On récupère un peu de théorie pour guider le modèle, mais on compte surtout sur ses capacités de codage
+        context_text = self._get_rag_context(topic)
+        
+        system_prompt = f"""Tu es un Senior Data Scientist et expert en Économétrie.
+        Ton but est de fournir un script {language} PARFAITEMENT EXÉCUTABLE et pédagogique sur : "{topic}".
+        
+        RÈGLES DE CODAGE STRICTES (PYTHON) :
+        1. **Nommage des variables** : Distingue CLAIREMENT la cible (y) et les features (X). N'appelle jamais ta matrice de design 'X' si 'X' est déjà ta série temporelle brute. Utilise `y` pour la dépendante et `X_design` ou `exog` pour les explicatives.
+        2. **Importations** : Importe toutes les librairies nécessaires au début.
+        3. **Données** : Le code DOIT générer ses propres données synthétiques (np.random) pour être autonome.
+        4. **Vérification** : Le script ne doit pas contenir d'erreur de syntaxe (comme écraser une variable utilisée ensuite).
+        5. **Visualisation** : Inclus un graphique matplotlib clair si pertinent.
+        
+        CONTEXTE THÉORIQUE (à respecter pour la formule) :
+        {context_text}
+        
+        FORMAT DE RÉPONSE :
+        - Courte intro.
+        - Bloc de code (complet, sans placeholder).
+        - Courte interprétation.
+        """
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Écris le script pour {topic} en {language}.")
+        ]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            return response.content
+        except Exception as e:
+            return f"❌ Erreur de génération de code : {str(e)}"
