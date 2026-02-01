@@ -8,7 +8,7 @@ ELA AI est un assistant d'apprentissage intelligent spécialisé en économétri
 1.  **RAG (Retrieval-Augmented Generation)** : Pour répondre aux questions théoriques en se basant exclusivement sur des supports de cours LaTeX.
 2.  **Vision par Ordinateur** : Pour analyser et expliquer des graphiques, tableaux ou équations manuscrites via des modèles multimodaux.
 
-Le projet est conçu pour la production avec une architecture conteneurisée (**Docker**) et une base de données persistante (**PostgreSQL**).
+Le projet est désormais conçu pour la production avec une architecture conteneurisée (**Docker**) et une base de données persistante (**PostgreSQL**).
 
 ### ✨ Fonctionnalités principales
 
@@ -121,9 +121,12 @@ Pour que le RAG fonctionne, vous devez ingérer vos cours.
 
 *Ces identifiants sont configurables dans la variable `ELA_AUTH_DATA` du fichier `.env`.*
 
-### Commandes Chat
-- **Upload d'image** : Glissez-déposez une image pour qu'ELA l'analyse.
-- **Bouton "Ma Galerie"** : Crée une conversation affichant l'historique de vos images.
+### Modes d'interaction
+
+- **💬 Chat & Vision** : Posez une question ou glissez-déposez une image (graphique, équation) pour obtenir une explication.
+- **🎓 Quiz Interactif** : Cliquez sur le starter "Générer un quiz" (ou tapez `/start_quiz`). ELA vous demandera un sujet et lancera une série de questions interactives.
+- **💻 Atelier Code** : Cliquez sur le starter "Atelier Code" (ou tapez `/code_workshop`). Choisissez votre langage (**Python** ou **R**) et le modèle à implémenter. ELA générera un script complet avec données synthétiques.
+- **🖼️ Ma Galerie** : Cliquez sur "Mes images" (ou tapez `/gallery`) pour retrouver votre historique visuel.
 
 ---
 

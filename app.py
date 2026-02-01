@@ -380,11 +380,11 @@ async def set_starters():
             message="/gallery",
             icon="/public/picture.svg",
         ),
-        cl.Starter(
-            label="Etudier",
-            message="Qu'est-ce qu'un modèle AR(1) ?",
-            icon="/public/study.svg",
-        ),
+        # cl.Starter(
+        #     label="Etudier",
+        #     message="Qu'est-ce qu'un modèle AR(1) ?",
+        #     icon="/public/study.svg",
+        # ),
         cl.Starter(
             label="Générer un quiz",
             message="/start_quiz",
