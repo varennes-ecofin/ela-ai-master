@@ -30,6 +30,7 @@ services:
       - ./chroma_db:/app/chroma_db  # Persistance du RAG (déjà sur le serveur)
       - ./.files_ela:/app/.files_ela # Persistance des images uploadées
       - ./.env:/app/.env            # Injection des secrets du serveur
+      - ./public:/app/public
     environment:
       # L'URL interne pour Docker : "db" est le nom du service ci-dessus
       - DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:5432/chainlit_db
