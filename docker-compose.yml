@@ -25,7 +25,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "80:8000"
     volumes:
       - ./chroma_db:/app/chroma_db  # Persistance du RAG (déjà sur le serveur)
       - ./.files_ela:/app/.files_ela # Persistance des images uploadées
