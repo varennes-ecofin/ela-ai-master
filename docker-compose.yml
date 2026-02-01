@@ -1,14 +1,38 @@
 services:
-  ela-ai:
-    build: .
-    container_name: ela_bot
+  # Service Base de Données
+  db:
+    image: postgres:15
     restart: always
-    ports:
-      - "80:8000"
-    volumes:
-      - ./chroma_db:/app/chroma_db
-      - ./public:/app/public
-      - ./.env:/app/.env
     environment:
-      - HOST=0.0.0.0
-      - PORT=8000
+      POSTGRES_USER: chainlit_user
+      POSTGRES_PASSWORD: securepassword  # On changera ça via le .env plus tard si besoin
+      POSTGRES_DB: chainlit_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chainlit_user -d chainlit_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Service Application ELA
+  app:
+    build: .
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_db:/app/chroma_db  # Persistance du RAG (déjà sur le serveur)
+      - ./.files_ela:/app/.files_ela # Persistance des images uploadées
+      - ./.env:/app/.env            # Injection des secrets du serveur
+    environment:
+      # L'URL interne pour Docker : "db" est le nom du service ci-dessus
+      - DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:5432/chainlit_db
+
+volumes:
+  postgres_data:
