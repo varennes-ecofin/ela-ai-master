@@ -21,6 +21,43 @@ from langchain_classic.retrievers import EnsembleRetriever
 load_dotenv()
 DB_PATH = "./chroma_db"
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+LLM_MODEL_NAME = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+ELA_BASE_INSTRUCTIONS = """
+Tu es ELA (Econometrics Learning Assistant), un assistant expert pédagogique.
+
+PROTOCOL DE CITATION STRICT (OBLIGATOIRE) :
+Tu dois impérativement indiquer l'origine de chaque information donnée. Distingue visuellement les sources :
+
+1. **SOURCE DOCUMENT (Priorité Absolue)** : 
+    - Si l'information vient du CONTEXTE DU COURS, termine la phrase/paragraphe par : `[Source: Nom_Du_Fichier]`.
+    - Ne paraphrase pas sans citer.
+
+2. **SOURCE EXTERNE (Complément IA)** :
+    - Si tu utilises tes propres connaissances (autorisé UNIQUEMENT selon les règles du MODE EXPERT ci-dessous), termine le paragraphe par : `[Source: Connaissances Générales]`.
+    - Si une réponse mixe les deux, chaque partie doit avoir son étiquette distincte.
+
+DIRECTIVES DE COMPORTEMENT (MODE EXPERT) :
+
+1. **Hiérarchie des Connaissances** :
+    - **PRIORITÉ 1 (Le Cours)** : En PRIORITÉ ABSOLUE, base-toi sur le CONTEXTE DU COURS, les images et l'historique. Si le cours définit une notation ou une méthode spécifique, tu dois la suivre impérativement.
+    - **PRIORITÉ 2 (Savoir Spécialisé)** : Si le contexte est muet, tu es autorisé à utiliser tes connaissances (en taguant `[Source: Connaissances Générales]`) UNIQUEMENT si le sujet concerne :
+        * **Séries Temporelles** : ARIMA, VAR, VECM, Stationnarité, Cointégration, Racine Unitaire, Bruit Blanc...
+        * **Économétrie Financière** : Volatilité (ARCH/GARCH), Rendements, Gestion des risques financiers.
+        * **Code** : Syntaxe Python/R appliquée à ces sujets spécifiques.
+
+2. **Frontières Strictes (Liste d'Exclusion)** :
+    Tu dois REFUSER de traiter les sujets suivants s'ils ne sont pas dans le contexte :
+    - **Micro-économétrie** : Panel, Logit/Probit, Tobit, IV (sauf si contexte Séries Temporelles).
+    - **Machine Learning Généraliste** : Classification, Clustering, NLP, Vision.
+    - **Culture Générale** : Histoire, Politique, etc.
+
+   *Réaction* : Si l'utilisateur pose une question interdite, réponds : "Je suis spécialisé en Séries Temporelles et Économétrie Financière. Ce sujet sort du cadre du cours."
+
+3. **Style & Format** :
+    - Pédagogique, universitaire, rigoureux.
+    - Utilise impérativement LaTeX : $...$ (inline) et $$...$$ (bloc).
+"""
 
 # Vérification FlashRank
 try:
@@ -67,8 +104,8 @@ class ELA_Bot:
             print("⚠️ GROQ_API_KEY non définie.")
         
         self.llm = ChatGroq(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            temperature=0.1,
+            model=LLM_MODEL_NAME,
+            temperature=0.2,
             max_tokens=2048
         )
         
@@ -89,8 +126,12 @@ class ELA_Bot:
         # Sécurité si la DB est vide
         if not docs_list:
             return chroma_retriever
+        
+        # Fonction de prétraitement pour ignorer la casse
+        def case_insensitive_tokenizer(text):
+            return text.lower().split()
 
-        bm25_retriever = BM25Retriever.from_documents(docs_list)
+        bm25_retriever = BM25Retriever.from_documents(docs_list,preprocess_func=case_insensitive_tokenizer)
         bm25_retriever.k = 20
         
         ensemble_retriever = EnsembleRetriever(
@@ -112,22 +153,15 @@ class ELA_Bot:
         return ensemble_retriever
 
     def _build_chain(self):
+        # On combine la base + le format attendu par LangChain
+        system_prompt_text = ELA_BASE_INSTRUCTIONS + """
+        
+        CONTEXTE DU COURS (Source unique) :
+        {context}
+        """
+        
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es ELA (Econometrics Learning Assistant), un assistant expert pour étudiants de master et strictement limité au contenu pédagogique fourni.
-DIRECTIVE CRITIQUE :
-Tu ne possèdes AUCUNE connaissance en dehors des informations fournies ci-dessous (Contexte et Image).
-Tu es amnésique concernant l'histoire, la géographie ou la culture générale.
-
-RÈGLES ABSOLUES :
-1. Tu dois répondre en utilisant **UNIQUEMENT** les informations présentes dans le CONTEXTE DU COURS ci-dessous ou dans l'image fournie.
-2. **Maths** : Utilise `$...$` (inline) et `$$...$$` (bloc).
-3. **Sources** : Cite [Source: Fichier.tex, Slide: Titre].
-4. **Incertitude** : Si la réponse à la question n'est pas explicitement dans le contexte ou l'image, tu dois dire : "Je ne trouve pas cette information dans vos documents de cours."
-5. **Conversation** : Utilise UNIQUEMENT l'historique de conversation, les informations présentes dans le CONTEXTE DU COURS ci-dessous ou dans l'image fournie.
-6. **Contexte** : N'utilise JAMAIS tes connaissances externes pour combler un manque d'information (pas d'hallucination).
-7. **Style** : Pédagogique, précis, rigoureux.
-CONTEXTE DU COURS (Source unique) :
-{context}"""),
+            ("system", system_prompt_text),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{question}")
         ])
@@ -174,19 +208,22 @@ CONTEXTE DU COURS (Source unique) :
             # 1. Récupérer le contexte RAG (Textuel)
             context_text = self._get_rag_context(question)
             
-            # 2. Préparer le message Système
-            system_prompt = f"""Tu es ELA, assistant expert en économétrie.
-            RÈGLES :
-            1. Analyse l'image fournie si présente (graphique, équation, tableau).
-            2. Utilise le CONTEXTE DU COURS ci-dessous pour t'aider.
-            3. Réponds en français avec rigueur mathématique (LaTeX pour les formules).
+            # 2. Préparer le message Système (VERSION RENFORCÉE)
+            full_system_prompt = f"""{ELA_BASE_INSTRUCTIONS}
+
+            TÂCHE ACTUELLE :
+            Réponds à la question de l'étudiant.
             
-            CONTEXTE DU COURS :
+            RAPPEL CRITIQUE SUR LES SOURCES :
+            - Chaque affirmation doit être sourcée.
+            - Utilise `[Source: ...]` pour le RAG.
+            - Utilise `[Source: Connaissances Générales]` si l'info vient de ton propre savoir.
+            - Si l'info est dans le contexte RAG ci-dessous, la citation est OBLIGATOIRE.
+            
+            CONTEXTE DU COURS (RAG) :
             {context_text}"""
 
-            messages = [SystemMessage(content=system_prompt)]
-            
-            # Ajouter l'historique de conversation
+            messages = [SystemMessage(content=full_system_prompt)]
             messages.extend(chat_history)
 
             # 3. Construire le message Utilisateur (Texte + Image potentielle)
@@ -214,30 +251,38 @@ CONTEXTE DU COURS (Source unique) :
         except Exception as e:
             return f"❌ Erreur ELA Vision : {str(e)}"
 
-    # --- NOUVELLE MÉTHODE POUR LE QUIZ ---
+
+    # --- METHODE POUR LE QUIZ ---
     async def generate_quiz_json(self, topic: str, num_questions: int = 3):
         """
-        Génère une liste de questions QCM au format JSON basée sur le cours.
+        Génère une liste de questions QCM au format JSON sans LaTeX pour éviter les bugs.
         """
-        # 1. Récupération du contexte pertinent (RAG)
         context_text = self._get_rag_context(topic)
         
-        # 2. Prompt strict pour forcer le JSON
-        system_prompt = f"""Tu es un professeur expert en économétrie.
-        Ta tâche est de créer un quiz de {num_questions} questions (QCM) sur le sujet : "{topic}".
+        # --- CHANGEMENT MAJEUR : PROMPT DÉDIÉ SANS LATEX ---
+        # On n'utilise PAS ELA_BASE_INSTRUCTIONS ici pour ne pas hériter de l'obligation LaTeX.
+        quiz_system_prompt = f"""
+        Tu es ELA, un assistant expert pédagogique.
         
-        RÈGLES STRICTES :
-        1. Base-toi UNIQUEMENT sur le CONTEXTE DU COURS fourni ci-dessous.
-        2. La sortie DOIT être un JSON valide (sans Markdown, sans texte avant/après).
-        3. Format attendu :
+        TÂCHE : Créer un quiz QCM de {num_questions} questions sur le sujet : "{topic}".
+
+        RÈGLES DE CONTENU (RAG) :
+        1. Base-toi UNIQUEMENT sur le CONTEXTE DU COURS ci-dessous.
+        2. Si le sujet n'est pas dans le cours, renvoie un JSON vide.
+
+        RÈGLES DE FORMAT (CRITIQUE POUR ÉVITER LES BUGS) :
+        1. **INTERDICTION TOTALE DU LATEX**. N'utilise jamais de symboles avec des backslashs.
+        2. Écris les concepts mathématiques en TOUTES LETTRES ou en notation standard.
+        3. La sortie doit être STRICTEMENT un objet JSON valide (RFC 8259).
+        
+        FORMAT ATTENDU :
         [
             {{
-                "question": "Texte de la question ?",
-                "options": ["A) Réponse 1", "B) Réponse 2", "C) Réponse 3"],
+                "question": "Quelle est la définition du R-carré ?",
+                "options": ["A) La variance...", "B) La moyenne...", "C) ..."],
                 "correct_index": 0,
-                "explanation": "Courte explication de pourquoi c'est la bonne réponse."
-            }},
-            ...
+                "explanation": "Le R-carré représente..."
+            }}
         ]
 
         CONTEXTE DU COURS :
@@ -245,8 +290,8 @@ CONTEXTE DU COURS (Source unique) :
         """
 
         messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Génère le quiz sur {topic}.")
+            SystemMessage(content=quiz_system_prompt),
+            HumanMessage(content=f"Génère le quiz sur {topic} sans LaTeX.")
         ]
 
         try:
@@ -277,8 +322,13 @@ CONTEXTE DU COURS (Source unique) :
         # On récupère un peu de théorie pour guider le modèle, mais on compte surtout sur ses capacités de codage
         context_text = self._get_rag_context(topic)
         
-        system_prompt = f"""Tu es un Senior Data Scientist et expert en Économétrie.
-        Ton but est de fournir un script {language} PARFAITEMENT EXÉCUTABLE et pédagogique sur : "{topic}".
+        # ICI UNE NUANCE : On garde la base d'instruction mais on ajoute la compétence CODAGE
+        full_system_prompt = f"""{ELA_BASE_INSTRUCTIONS}
+
+        EXCEPTION : Pour cette tâche de programmation, tu as le droit d'utiliser tes connaissances en syntaxe {language} (librairies, fonctions), MAIS les équations et la logique théorique doivent venir strictement du CONTEXTE DU COURS.
+        
+        TÂCHE ACTUELLE : GÉNÉRER UN SCRIPT {language} EXÉCUTABLE
+        Sujet : "{topic}"
         
         RÈGLES DE CODAGE STRICTES (PYTHON) :
         1. **Nommage des variables** : Distingue CLAIREMENT la cible (y) et les features (X). N'appelle jamais ta matrice de design 'X' si 'X' est déjà ta série temporelle brute. Utilise `y` pour la dépendante et `X_design` ou `exog` pour les explicatives.
@@ -297,7 +347,7 @@ CONTEXTE DU COURS (Source unique) :
         """
 
         messages = [
-            SystemMessage(content=system_prompt),
+            SystemMessage(content=full_system_prompt),
             HumanMessage(content=f"Écris le script pour {topic} en {language}.")
         ]
 

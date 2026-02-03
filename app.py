@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import chainlit as cl
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 from chainlit.types import ThreadDict
+
 from langchain_core.messages import HumanMessage, AIMessage
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -47,11 +48,11 @@ class LocalStorageClient:
         # Écriture du fichier
         async with aiofiles.open(file_path, "wb") as f:
             await f.write(data)
-            
+    
         return {"object_key": object_key, "url": str(file_path)}
 
     async def get_read_url(self, object_key: str) -> str:
-        """Retourne le chemin du fichier pour que Chainlit puisse l'afficher."""
+        # """Retourne le chemin du fichier pour que Chainlit puisse l'afficher."""
         file_path = os.path.join(self.base_path, object_key)
         return str(file_path)
 
@@ -59,6 +60,7 @@ class LocalStorageClient:
     async def delete_file(self, object_key: str):
         """Supprime le fichier physique ET les dossiers vides parents."""
         file_path = os.path.join(self.base_path, object_key)
+        
         
         try:
             if os.path.exists(file_path):
@@ -140,13 +142,6 @@ async def start():
     # On instancie le bot RAG
     ela_instance = ELA_Bot()
     cl.user_session.set("ela_bot", ela_instance)
-    
-    # # Message de bienvenue
-    # welcome_msg = cl.Message(
-    #     content="👋 Bonjour ! Je suis **ELA**, votre assistant en économétrie.\n\nPosez-moi une question sur vos cours ou consultez l'historique dans la barre latérale.",
-    #     author="ELA 🤖"
-    # )
-    # await welcome_msg.send()
 
 # --- 4. REPRISE DE CONVERSATION (Clic dans la Sidebar) ---
 @cl.on_chat_resume
@@ -218,7 +213,8 @@ async def main(message: cl.Message):
         quiz_data = await ela_bot.generate_quiz_json(topic, num_questions=3)
         
         if not quiz_data:
-            await msg_wait.update(content="⚠️ Je n'ai pas trouvé assez d'informations dans le cours pour ce sujet. Essayez un autre terme.")
+            msg_wait.content = "⚠️ Je n'ai pas trouvé assez d'informations dans le cours pour ce sujet."
+            await msg_wait.update()
             return
 
         # On stocke le quiz
@@ -343,7 +339,7 @@ async def show_user_gallery():
         async with AsyncSessionLocal() as session:
             result = await session.execute(query, {"user_id": user.identifier})
             rows = result.fetchall()
-            
+                    
             for row in rows:
                 if row[0] and os.path.exists(row[0]):
                     images_found.append(
@@ -380,11 +376,6 @@ async def set_starters():
             message="/gallery",
             icon="/public/picture.svg",
         ),
-        # cl.Starter(
-        #     label="Etudier",
-        #     message="Qu'est-ce qu'un modèle AR(1) ?",
-        #     icon="/public/study.svg",
-        # ),
         cl.Starter(
             label="Générer un quiz",
             message="/start_quiz",
