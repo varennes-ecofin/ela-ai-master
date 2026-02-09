@@ -146,7 +146,7 @@ ela-ai-master/
 ├── Dockerfile              # Configuration de l'image Docker Python
 ├── ingest.py               # Script d'indexation des documents vers ChromaDB
 └── requirements.txt        # Liste des dépendances Python
-
+```
 ---
 
 ## 🔧 Configuration avancée
