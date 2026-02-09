@@ -1,7 +1,7 @@
 # main_ela.py
 import os
 import json
-import base64
+# import base64
 from dotenv import load_dotenv
 from typing import List
 
@@ -16,6 +16,16 @@ from langchain_groq import ChatGroq
 
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
+
+from flashrank import Ranker, RerankRequest
+# Vérification FlashRank
+try:
+    from flashrank import Ranker, RerankRequest
+    FLASHRANK_AVAILABLE = True
+except ImportError:
+    FLASHRANK_AVAILABLE = False
+
+from rag_guard import RAGGuard
 
 # Configuration
 load_dotenv()
@@ -59,12 +69,7 @@ DIRECTIVES DE COMPORTEMENT (MODE EXPERT) :
     - Utilise impérativement LaTeX : $...$ (inline) et $$...$$ (bloc).
 """
 
-# Vérification FlashRank
-try:
-    from flashrank import Ranker, RerankRequest
-    FLASHRANK_AVAILABLE = True
-except ImportError:
-    FLASHRANK_AVAILABLE = False
+
 
 class FlashRankCompressor:
     """Custom compressor using FlashRank for reranking documents."""
@@ -112,6 +117,9 @@ class ELA_Bot:
         # 4. Chain
         self.rag_chain = self._build_chain()
         print("✅ Moteur ELA prêt !")
+        
+        # 5. RAG Guard (Contrôle qualité retrieval)
+        self.guard = RAGGuard(llm=self.llm, max_retries=1)
 
     def _build_retrievers(self):
         chroma_retriever = self.vector_db.as_retriever(search_kwargs={"k": 20})
@@ -176,7 +184,7 @@ class ELA_Bot:
                 formatted.append(f">> [Source: {src} | Slide: {slide}]\n{content}")
             return "\n\n".join(formatted)
 
-        # On utilise une méthode simple pour combiner le contexte et la question
+        # Méthode simple pour combiner le contexte et la question
         chain = (
             {
                 "context": lambda x: format_docs(self.retriever.invoke(x["question"])),
@@ -189,7 +197,7 @@ class ELA_Bot:
         )
         return chain
     
-    # NOUVELLE MÉTHODE pour préparer le contexte texte (RAG)
+    # Préparer le contexte texte (RAG)
     def _get_rag_context(self, question: str):
         docs = self.retriever.invoke(question)
         formatted = []
@@ -199,68 +207,115 @@ class ELA_Bot:
             formatted.append(f">> [Source: {src}]\n{content}")
         return "\n\n".join(formatted)
 
-    # MODIFICATION MAJEURE de la méthode ask
-    async def ask(self, question: str, chat_history: list = None, image_path: str = None) -> str:
-        if chat_history is None: 
+
+    # --- MÉTHODE (STREAMING + GUARD) ---
+    async def ask(self, question: str, chat_history: list = None, image_path: str = None):
+        """
+        Main entry point for answering user questions with RAG guard.
+        Async generator: yields response tokens for streaming.
+
+        Args:
+            question: The user's question.
+            chat_history: List of previous messages (LangChain format).
+            image_path: Optional path to an uploaded image.
+
+        Yields:
+            Response text chunks (str).
+        """
+        if chat_history is None:
             chat_history = []
-        
+
         try:
-            # 1. Récupérer le contexte RAG (Textuel)
-            context_text = self._get_rag_context(question)
-            
-            # 2. Préparer le message Système (VERSION RENFORCÉE)
+            # 1. Retrieve + Grade (runs BEFORE streaming starts)
+            docs, grade = await self._retrieve_and_grade(question)
+
+            # 2. Route: refuse if out of domain
+            if grade.action == "refuse_domain":
+                yield (
+                    "Je suis spécialisé en **Séries Temporelles** et "
+                    "**Économétrie Financière**. Ce sujet sort du cadre du cours.\n\n"
+                    f"_({grade.reasoning})_"
+                )
+                return  # Stop the generator
+
+            # 3. Build context from graded docs
+            context_text = self._format_rag_context(docs)
+
+            # 4. Adjust system prompt based on grade
+            if grade.docs_relevant:
+                source_instruction = (
+                    "INSTRUCTION CRITIQUE : Les documents ci-dessous contiennent "
+                    "des informations pertinentes pour répondre. Tu DOIS baser ta "
+                    "réponse sur ces documents et citer [Source: NomFichier]. "
+                    "N'utilise PAS tes connaissances générales si le cours couvre le sujet."
+                )
+            else:
+                source_instruction = (
+                    "NOTE : Les documents récupérés ne semblent pas directement "
+                    "pertinents pour cette question. Tu peux utiliser tes connaissances "
+                    "spécialisées (séries temporelles, économétrie financière) en "
+                    "taguant [Source: Connaissances Générales]."
+                )
+
             full_system_prompt = f"""{ELA_BASE_INSTRUCTIONS}
 
-            TÂCHE ACTUELLE :
-            Réponds à la question de l'étudiant.
-            
-            RAPPEL CRITIQUE SUR LES SOURCES :
-            - Chaque affirmation doit être sourcée.
-            - Utilise `[Source: ...]` pour le RAG.
-            - Utilise `[Source: Connaissances Générales]` si l'info vient de ton propre savoir.
-            - Si l'info est dans le contexte RAG ci-dessous, la citation est OBLIGATOIRE.
-            
+            {source_instruction}
+
             CONTEXTE DU COURS (RAG) :
             {context_text}"""
 
             messages = [SystemMessage(content=full_system_prompt)]
             messages.extend(chat_history)
 
-            # 3. Construire le message Utilisateur (Texte + Image potentielle)
+            # 5. Build user message (text + optional image)
             content_blocks = [{"type": "text", "text": question}]
-            
+
             if image_path:
-                # Encodage de l'image en Base64 pour l'API Groq
+                import base64
                 with open(image_path, "rb") as image_file:
-                    image_data = base64.b64encode(image_file.read()).decode('utf-8')
-                
+                    image_data = base64.b64encode(image_file.read()).decode("utf-8")
                 content_blocks.append({
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
                 })
                 print("🖼️ Image détectée et envoyée à Groq Vision")
 
-            # Ajouter le message utilisateur final
             messages.append(HumanMessage(content=content_blocks))
 
-            # 4. Appel direct au LLM (On contourne la chaine rigide pour la flexibilité Vision)
-            response = await self.llm.ainvoke(messages)
-            
-            return response.content
-            
+            # 6. Stream LLM response token by token
+            async for chunk in self.llm.astream(messages):
+                if chunk.content:
+                    yield chunk.content
+
         except Exception as e:
-            return f"❌ Erreur ELA Vision : {str(e)}"
+            yield f"❌ Erreur ELA : {str(e)}"
 
 
-    # --- METHODE POUR LE QUIZ ---
+    # --- MÉTHODE generate_quiz_json() ---
     async def generate_quiz_json(self, topic: str, num_questions: int = 3):
         """
-        Génère une liste de questions QCM au format JSON sans LaTeX pour éviter les bugs.
+        Generate quiz questions with domain validation.
+
+        Args:
+            topic: The quiz topic.
+            num_questions: Number of questions to generate.
+
+        Returns:
+            List of quiz question dicts, or empty list on failure.
         """
-        context_text = self._get_rag_context(topic)
-        
-        # --- CHANGEMENT MAJEUR : PROMPT DÉDIÉ SANS LATEX ---
-        # On n'utilise PAS ELA_BASE_INSTRUCTIONS ici pour ne pas hériter de l'obligation LaTeX.
+        # Vérification domaine avant quiz
+        docs, grade = await self._retrieve_and_grade(topic)
+
+        if grade.action == "refuse_domain":
+            return [{"error": "domain", "message": grade.reasoning}]
+
+        if not grade.docs_relevant:
+            return []
+
+        # Use graded docs instead of re-retrieving
+        context_text = self._format_rag_context(docs)
+
+        # Le reste est identique à l'existant, mais utilise context_text d'au-dessus
         quiz_system_prompt = f"""
         Tu es ELA, un assistant expert pédagogique.
         
@@ -291,28 +346,20 @@ class ELA_Bot:
 
         messages = [
             SystemMessage(content=quiz_system_prompt),
-            HumanMessage(content=f"Génère le quiz sur {topic} sans LaTeX.")
+            HumanMessage(content=f"Génère le quiz sur {topic} sans LaTeX."),
         ]
 
         try:
-            # Appel LLM avec paramètre pour forcer le JSON si le modèle le supporte (ou via prompt)
-            # Pour Groq/Llama, le prompt strict fonctionne généralement bien
             response = await self.llm.ainvoke(messages)
             content = response.content.strip()
-            
-            # Nettoyage si le LLM ajoute du markdown ```json ... ```
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
                 content = content.split("```")[1].strip()
-
-            quiz_data = json.loads(content)
-            return quiz_data
-            
+            return json.loads(content)
         except Exception as e:
             print(f"❌ Erreur génération Quiz : {e}")
-            # Fallback en cas d'erreur de parsing
-            return []   
+            return []
         
 
     async def generate_practical_code(self, topic: str, language: str = "Python"):
@@ -322,7 +369,7 @@ class ELA_Bot:
         # On récupère un peu de théorie pour guider le modèle, mais on compte surtout sur ses capacités de codage
         context_text = self._get_rag_context(topic)
         
-        # ICI UNE NUANCE : On garde la base d'instruction mais on ajoute la compétence CODAGE
+        # On garde la base d'instruction mais on ajoute la compétence CODAGE
         full_system_prompt = f"""{ELA_BASE_INSTRUCTIONS}
 
         EXCEPTION : Pour cette tâche de programmation, tu as le droit d'utiliser tes connaissances en syntaxe {language} (librairies, fonctions), MAIS les équations et la logique théorique doivent venir strictement du CONTEXTE DU COURS.
@@ -356,3 +403,45 @@ class ELA_Bot:
             return response.content
         except Exception as e:
             return f"❌ Erreur de génération de code : {str(e)}"
+        
+    # --- RELEVANCE GRADER ---
+    async def _retrieve_and_grade(self, question: str) -> tuple:
+        """
+        Retrieve documents then grade their relevance.
+        If grading suggests a retry, reformulates the query once.
+
+        Args:
+            question: The user's question.
+
+        Returns:
+            Tuple of (documents, grade_result).
+        """
+        docs = self.retriever.invoke(question)
+        grade = await self.guard.grade(question, docs)
+
+        if grade.action == "retry_query" and grade.suggested_query:
+            print(f"🔄 RAG Guard: retry avec '{grade.suggested_query}'")
+            docs_retry = self.retriever.invoke(grade.suggested_query)
+            grade_retry = await self.guard.grade(question, docs_retry)
+            if grade_retry.docs_relevant:
+                return docs_retry, grade_retry
+
+        return docs, grade
+    
+    # --- Format Context ---
+    def _format_rag_context(self, docs: list) -> str:
+        """
+        Format retrieved documents into context string.
+
+        Args:
+            docs: List of LangChain Document objects.
+
+        Returns:
+            Formatted context string.
+        """
+        formatted = []
+        for doc in docs:
+            src = doc.metadata.get("source", "Inconnu")
+            content = doc.page_content.replace("\n", " ")
+            formatted.append(f">> [Source: {src}]\n{content}")
+        return "\n\n".join(formatted)
