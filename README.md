@@ -14,7 +14,6 @@ Le projet est désormais conçu pour la production avec une architecture contene
 
 - 🧠 **RAG Expert** : Recherche hybride (BM25 + Sémantique) sourcée exclusivement dans vos documents.
 - 👁️ **Vision IA** : Analyse d'images (courbes, matrices, scans) via Llama 4 Scout / Llama 3.2 Vision.
-- 📂 **Galerie "Mes Contenus"** : Espace dédié pour retrouver toutes les images et graphiques envoyés.
 - 💾 **Persistance SQL** : Historique des conversations et feedbacks stockés durablement dans PostgreSQL.
 - ⚡ **Reranking intelligent** : Utilisation de FlashRank pour optimiser la pertinence des résultats.
 - 🔐 **Authentification** : Système multi-utilisateurs (Étudiant / Superviseur) sécurisé.
@@ -116,7 +115,7 @@ Pour que le RAG fonctionne, vous devez ingérer vos cours.
 
 | Utilisateur | Mot de passe | Rôle |
 |-------------|--------------|------|
-| `etudiant` | `password` | Accès standard + Galerie |
+| `etudiant` | `password` | Accès standard |
 | `supervisor` | `password` | Accès complet (futur admin) |
 
 *Ces identifiants sont configurables dans la variable `ELA_AUTH_DATA` du fichier `.env`.*
@@ -126,7 +125,6 @@ Pour que le RAG fonctionne, vous devez ingérer vos cours.
 - **💬 Chat & Vision** : Posez une question ou glissez-déposez une image (graphique, équation) pour obtenir une explication.
 - **🎓 Quiz Interactif** : Cliquez sur le starter "Générer un quiz" (ou tapez `/start_quiz`). ELA vous demandera un sujet et lancera une série de questions interactives.
 - **💻 Atelier Code** : Cliquez sur le starter "Atelier Code" (ou tapez `/code_workshop`). Choisissez votre langage (**Python** ou **R**) et le modèle à implémenter. ELA générera un script complet avec données synthétiques.
-- **🖼️ Ma Galerie** : Cliquez sur "Mes images" (ou tapez `/gallery`) pour retrouver votre historique visuel.
 
 ---
 
@@ -138,7 +136,7 @@ ela-ai-master/
 ├── chroma_db/              # Base vectorielle (Embeddings des cours)
 ├── latex/                  # Sources .tex des cours
 ├── public/                 # Assets (Logos, icônes)
-├── app.py                  # Application principale (Chainlit + DB + Galerie)
+├── app.py                  # Application principale (Chainlit + DB)
 ├── main_ela.py             # Cerveau IA (LangChain, Vision, RAG)
 ├── ingest.py               # Script d'ingestion des données
 ├── docker-compose.yml      # Orchestration Docker

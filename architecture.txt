@@ -5,10 +5,11 @@ ela-ai-master/
 ├── latex/                  # Fichiers sources .tex (Cours d'économétrie)
 ├── public/                 # Assets statiques (Logos, icônes des starters)
 ├── .env                    # Variables d'environnement (Secrets, API Keys, DB URL)
-├── app.py                  # Interface Chat (Chainlit) + Gestion Base de Données + Galerie
+├── app.py                  # Interface Chat (Chainlit) + Gestion Base de Données
+├── main_ela.py             # Cerveau RAG : Orchestration LangChain et Vision
+├── rag_guard.py            # Contrôle qualité : Grader de pertinence et filtrage de domaine
 ├── chainlit.md             # Message d'accueil (Markdown)
 ├── docker-compose.yml      # Orchestration des services (App + PostgreSQL)
 ├── Dockerfile              # Configuration de l'image Docker Python
-├── ingest.py               # Script d'ingestion (Texte -> Vecteurs)
-├── main_ela.py             # Cerveau de l'IA (LangChain, Vision, Logique RAG)
+├── ingest.py               # Script d'indexation des documents vers ChromaDB
 └── requirements.txt        # Liste des dépendances Python
