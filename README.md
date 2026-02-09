@@ -84,7 +84,7 @@ L'application est accessible sur : **http://localhost:80** (ou l'IP de votre ser
 2.  **Configuration .env**
     Attention à l'URL de la base de données qui doit pointer vers votre localhost :
     ```ini
-    DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@localhost:5432/chainlit_db
+    DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@localhost:****/chainlit_db
     ```
 
 3.  **Lancer l'application**
