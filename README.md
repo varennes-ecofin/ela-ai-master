@@ -158,7 +158,7 @@ Dans `main_ela.py`, vous pouvez ajuster le modèle utilisé :
 ```python
 # Modèle Vision & Texte
 self.llm = ChatGroq(
-    model="llama-3.2-90b-vision-preview", # ou "llama-4-scout-..."
+    model="meta-llama/llama-4-scout-17b-16e-instruct"
     temperature=0.0,
     max_tokens=2048
 )
@@ -177,8 +177,8 @@ Les images uploadées sont stockées localement via la classe `LocalStorageClien
 
 Si vous passez du serveur à votre PC local, n'oubliez pas de changer `DATABASE_URL` dans le `.env` :
 
-* Serveur Docker : `@db:5432`
-* PC Local : `@localhost:5432`
+* Serveur Docker : `@db:****`
+* PC Local : `@localhost:****`
 
 ### Erreur d'affichage des icônes (Starters)
 
@@ -191,7 +191,7 @@ Assurez-vous que le dossier `public` est bien monté dans le `docker-compose.yml
 | Composant | Technologie |
 | --- | --- |
 | **Frontend/Backend** | Chainlit 2.9.6 |
-| **LLM Engine** | Groq (Llama 3.2 Vision / Llama 3.3) |
+| **LLM Engine** | Groq (Llama 4 Scout) |
 | **Database** | PostgreSQL 15 + AsyncPG |
 | **Vector Store** | ChromaDB |
 | **Orchestration** | Docker Compose |
