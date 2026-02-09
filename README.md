@@ -50,7 +50,7 @@ C'est la m√©thode la plus simple pour lancer l'application avec sa base de donn√
     ELA_AUTH_DATA=etudiant:password,supervisor:password
     
     # Configuration Docker (ne pas toucher pour le mode Docker)
-    DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:5432/chainlit_db
+    DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:****/chainlit_db
     ```
 
 3.  **Lancer les services**
