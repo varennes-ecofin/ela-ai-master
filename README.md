@@ -132,17 +132,20 @@ Pour que le RAG fonctionne, vous devez ingérer vos cours.
 
 ```text
 ela-ai-master/
-├── .files_ela/             # Stockage physique des images (Persistance Docker)
-├── chroma_db/              # Base vectorielle (Embeddings des cours)
-├── latex/                  # Sources .tex des cours
-├── public/                 # Assets (Logos, icônes)
-├── app.py                  # Application principale (Chainlit + DB)
-├── main_ela.py             # Cerveau IA (LangChain, Vision, RAG)
-├── ingest.py               # Script d'ingestion des données
-├── docker-compose.yml      # Orchestration Docker
-├── Dockerfile              # Image système
-├── requirements.txt        # Dépendances Python
-└── .env                    # Secrets (Non commité)
+├── .chainlit/              # Configuration Chainlit et traductions
+├── .files_ela/             # Stockage physique des images uploadées (Volume Docker)
+├── chroma_db/              # Base de données vectorielle (RAG - Embeddings des cours)
+├── latex/                  # Fichiers sources .tex (Cours d'économétrie)
+├── public/                 # Assets statiques (Logos, icônes des starters)
+├── .env                    # Variables d'environnement (Secrets, API Keys, DB URL)
+├── app.py                  # Interface Chat (Chainlit) + Gestion Base de Données
+├── main_ela.py             # Cerveau RAG : Orchestration LangChain et Vision
+├── rag_guard.py            # Contrôle qualité : Grader de pertinence et filtrage de domaine
+├── chainlit.md             # Message d'accueil (Markdown)
+├── docker-compose.yml      # Orchestration des services (App + PostgreSQL)
+├── Dockerfile              # Configuration de l'image Docker Python
+├── ingest.py               # Script d'indexation des documents vers ChromaDB
+└── requirements.txt        # Liste des dépendances Python
 
 ---
 
