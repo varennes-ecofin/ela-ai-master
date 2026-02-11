@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 
-# Import de votre logique RAG
+# Import de la logique RAG
 from main_ela import ELA_Bot
 
 # chainlit run app.py -w 
@@ -683,4 +683,5 @@ async def on_code_lang(action: cl.Action):
         content=f"C'est noté pour **{lang}** !\n\n"
         "Quel modèle ou concept voulez-vous implémenter ? "
         "(ex: *MCO, VAR, ARCH, Test de Student...*)"
+
     ).send()
