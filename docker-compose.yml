@@ -4,15 +4,14 @@ services:
     image: postgres:15
     restart: always
     environment:
-      POSTGRES_USER: chainlit_user
-      POSTGRES_PASSWORD: securepassword  
-      POSTGRES_DB: chainlit_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+  
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chainlit_user -d chainlit_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,14 +26,11 @@ services:
     ports:
       - "80:8000"
     volumes:
-      - ./chroma_db:/app/chroma_db  # Persistance du RAG (déjà sur le serveur)
-      - ./.files_ela:/app/.files_ela # Persistance des images uploadées
-      - ./.env:/app/.env            # Injection des secrets du serveur
+      - ./chroma_db:/app/chroma_db  
+      - ./.files_ela:/app/.files_ela 
+      - ./.env:/app/.env            
       - ./public:/app/public
-    environment:
-      # L'URL interne pour Docker : "db" est le nom du service ci-dessus
-      - DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:5432/chainlit_db
+    # On a supprimé le bloc "environment:" ici car l'appli lit déjà le .env monté en volume.
 
 volumes:
-
   postgres_data:
