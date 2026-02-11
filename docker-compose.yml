@@ -30,7 +30,7 @@ services:
       - ./.files_ela:/app/.files_ela 
       - ./.env:/app/.env            
       - ./public:/app/public
-    # On a supprimé le bloc "environment:" ici car l'appli lit déjà le .env monté en volume.
 
 volumes:
   postgres_data:
+
