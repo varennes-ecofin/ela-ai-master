@@ -5,7 +5,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: chainlit_user
-      POSTGRES_PASSWORD: securepassword  # On changera ça via le .env plus tard si besoin
+      POSTGRES_PASSWORD: securepassword  
       POSTGRES_DB: chainlit_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -36,4 +36,5 @@ services:
       - DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:5432/chainlit_db
 
 volumes:
+
   postgres_data:
