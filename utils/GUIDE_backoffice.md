@@ -25,8 +25,8 @@ Le backoffice est une application **Streamlit** déployée comme service Docker 
 ```
 docker-compose.yml
 ├── app       (Chainlit ELA)           → port 80
-├── db        (PostgreSQL 15)          → port 5432 (interne)
-└── admin     (Streamlit backoffice)   → port 8501
+├── db        (PostgreSQL 15)          → port **** (interne)
+└── admin     (Streamlit backoffice)   → port ****
 ```
 
 Tous les services partagent le même réseau Docker. Le backoffice `admin` accède à `db:5432` directement.
