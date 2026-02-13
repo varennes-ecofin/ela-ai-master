@@ -29,7 +29,7 @@ docker-compose.yml
 └── admin     (Streamlit backoffice)   → port ****
 ```
 
-Tous les services partagent le même réseau Docker. Le backoffice `admin` accède à `db:5432` directement.
+Tous les services partagent le même réseau Docker. Le backoffice `admin` accède à `db:****` directement.
 
 ---
 
