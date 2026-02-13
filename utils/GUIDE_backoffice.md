@@ -265,12 +265,12 @@ Variables conservées :
 ```ini
 GROQ_API_KEY=gsk_...
 CHAINLIT_AUTH_SECRET=...
-DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@db:5432/chainlit_db
+DATABASE_URL=postgresql+asyncpg://chainlit_user:securepw*****@db:****/chainlit_db
 ```
 
 Variables ajoutées pour le backoffice :
 ```ini
-ADMIN_DATABASE_URL=postgresql://chainlit_user:securepassword@db:5432/chainlit_db
+ADMIN_DATABASE_URL=postgresql://chainlit_user:securepw*****@db:****/chainlit_db
 ADMIN_USERNAME=superadmin
 ADMIN_PASSWORD_HASH=<bcrypt hash>
 ```
