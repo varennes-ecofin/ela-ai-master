@@ -1,5 +1,5 @@
 services:
-  # Service Base de Données
+  # --- Base de Données ---
   db:
     image: postgres:15
     restart: always
@@ -9,14 +9,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-  
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Service Application ELA
+  # --- Application ELA ---
   app:
     build: .
     restart: always
@@ -25,12 +24,31 @@ services:
         condition: service_healthy
     ports:
       - "80:8000"
+    env_file:
+      - .env
+    environment:
+      # Force l'URL DB Docker (écrase celle du .env si présente)
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     volumes:
-      - ./chroma_db:/app/chroma_db  
-      - ./.files_ela:/app/.files_ela 
-      - ./.env:/app/.env            
+      - ./data:/app/data
+      - ./.files_ela:/app/.files_ela
       - ./public:/app/public
+
+  # --- Backoffice Admin ---
+  admin:
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+    container_name: ela-admin
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8501:8501"
+    environment:
+      - ADMIN_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./data:/app/data
 
 volumes:
   postgres_data:
-

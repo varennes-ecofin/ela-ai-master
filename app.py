@@ -30,8 +30,9 @@ from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
+import bcrypt
 
-# Import de la logique RAG
+# Import de votre logique RAG
 from main_ela import ELA_Bot
 
 # chainlit run app.py -w 
@@ -367,21 +368,111 @@ class LocalSQLAlchemyDataLayer(SQLAlchemyDataLayer):
 
 
 # ============================================================
-# SECTION 4 : GESTION UTILISATEURS
+# SECTION 4 : GESTION UTILISATEURS (DB + BCRYPT)
 # ============================================================
-def load_users_from_env():
-    """Charge le dictionnaire user:password depuis le .env"""
-    users_dict = {}
-    raw_data = os.getenv("ELA_AUTH_DATA", "")
-    if not raw_data:
-        return users_dict
-    for pair in raw_data.split(","):
-        if ":" in pair:
-            username, password = pair.split(":", 1)
-            users_dict[username.strip()] = password.strip()
-    return users_dict
+# Les identifiants sont désormais stockés en base PostgreSQL
+# avec hash bcrypt. La variable ELA_AUTH_DATA n'est plus utilisée.
+# ============================================================
 
-USERS = load_users_from_env()
+async def _query_db(query_str: str, params: dict = None):
+    """Execute an async SQL query and return result rows.
+
+    Reuses the DATABASE_URL from the environment (same DB as Chainlit).
+    Creates a short-lived engine per call — acceptable for auth/quota
+    checks which happen infrequently.
+
+    Args:
+        query_str: SQL query with :named placeholders.
+        params: Dict of parameter values.
+
+    Returns:
+        List of row mappings, or empty list on error.
+    """
+    db_url = os.getenv("DATABASE_URL")
+    engine = create_async_engine(db_url)
+    AsyncSessionLocal = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text(query_str), params or {})
+            rows = result.mappings().all()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"⚠️ DB query error: {e}")
+        return []
+    finally:
+        await engine.dispose()
+
+
+async def _update_db(query_str: str, params: dict = None):
+    """Execute an async SQL UPDATE/INSERT and commit.
+
+    Args:
+        query_str: SQL statement with :named placeholders.
+        params: Dict of parameter values.
+    """
+    db_url = os.getenv("DATABASE_URL")
+    engine = create_async_engine(db_url)
+    AsyncSessionLocal = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text(query_str), params or {})
+            await session.commit()
+    except Exception as e:
+        print(f"⚠️ DB update error: {e}")
+    finally:
+        await engine.dispose()
+
+
+async def get_user_profile(identifier: str) -> dict:
+    """Fetch full user profile from the database.
+
+    Args:
+        identifier: The user's login username.
+
+    Returns:
+        Dict with user profile fields, or empty dict if not found.
+    """
+    rows = await _query_db(
+        """
+        SELECT id, identifier, role, level, is_active, daily_quota
+        FROM users
+        WHERE identifier = :identifier
+        """,
+        {"identifier": identifier},
+    )
+    return rows[0] if rows else {}
+
+
+async def check_quota(identifier: str) -> dict:
+    """Check if user has remaining quota for today.
+
+    Args:
+        identifier: The user's login username.
+
+    Returns:
+        Dict with keys: allowed (bool), used (int), limit (int or None).
+    """
+    profile = cl.user_session.get("user_profile", {})
+    quota = profile.get("daily_quota")
+
+    # NULL quota = unlimited (admin)
+    if quota is None:
+        return {"allowed": True, "used": 0, "limit": None}
+
+    rows = await _query_db(
+        """
+        SELECT COUNT(s.id) AS msg_count
+        FROM steps s
+        JOIN threads t ON s."threadId" = t.id
+        WHERE t."userIdentifier" = :identifier
+        AND s.type = 'user_message'
+        AND s."createdAt"::DATE = CURRENT_DATE
+        """,
+        {"identifier": identifier},
+    )
+
+    used = rows[0]["msg_count"] if rows else 0
+    return {"allowed": used < quota, "used": used, "limit": quota}
 
 
 # ============================================================
@@ -402,33 +493,90 @@ def get_data_layer():
     )
 
 
-# --- AUTHENTIFICATION ---
+# --- AUTHENTIFICATION (DB + BCRYPT) ---
 @cl.password_auth_callback
-def auth_callback(username, password):
-    """Vérifie les identifiants par rapport au .env"""
-    if username in USERS and USERS[username] == password:
-        return cl.User(identifier=username)
-    return None
+async def auth_callback(username, password):
+    """Verify credentials against the users table with bcrypt.
+
+    Also updates last_login timestamp on successful authentication.
+
+    Args:
+        username: Login identifier.
+        password: Plaintext password to verify.
+
+    Returns:
+        cl.User on success, None on failure.
+    """
+    rows = await _query_db(
+        """
+        SELECT identifier, password_hash, role, is_active
+        FROM users
+        WHERE identifier = :username
+        """,
+        {"username": username},
+    )
+
+    if not rows:
+        return None
+
+    user = rows[0]
+
+    # Account must be active
+    if not user["is_active"]:
+        return None
+
+    # Verify bcrypt hash
+    if not user["password_hash"]:
+        return None
+
+    if not bcrypt.checkpw(
+        password.encode("utf-8"),
+        user["password_hash"].encode("utf-8"),
+    ):
+        return None
+
+    # Update last_login
+    await _update_db(
+        "UPDATE users SET last_login = NOW() WHERE identifier = :username",
+        {"username": username},
+    )
+
+    print(f"✅ Login réussi : {username} (rôle: {user['role']})")
+    return cl.User(identifier=username)
 
 
 # --- DÉMARRAGE DE SESSION ---
 @cl.on_chat_start
 async def start():
-    """Initialise le bot quand une nouvelle session démarre."""
+    """Initialize bot and load user profile on new session."""
     print("🚀 Démarrage nouvelle session")
-    ela_instance = ELA_Bot()
+
+    # Load user profile from DB
+    user = cl.context.session.user
+    if user:
+        profile = await get_user_profile(user.identifier)
+        cl.user_session.set("user_profile", profile)
+        print(f"👤 Profil chargé : {user.identifier} | rôle={profile.get('role')} | niveau={profile.get('level')}")
+
+    user_level = profile.get("level", "ALL") if user else "ALL"
+    ela_instance = ELA_Bot(user_level=user_level)
     cl.user_session.set("ela_bot", ela_instance)
 
 
 # --- REPRISE DE CONVERSATION ---
 @cl.on_chat_resume
 async def on_chat_resume(thread: ThreadDict):
-    """
-    Appelé quand l'utilisateur clique sur une ancienne conversation.
-    Chainlit charge l'historique visuel automatiquement.
-    """
+    """Reload bot and user profile when resuming a conversation."""
     print(f"🔄 Reprise de la conversation {thread['id']}")
-    ela_instance = ELA_Bot()
+
+    # Reload user profile
+    user = cl.context.session.user
+    if user:
+        profile = await get_user_profile(user.identifier)
+        cl.user_session.set("user_profile", profile)
+
+    user_level = profile.get("level", "ALL") if user else "ALL"
+    ela_instance = ELA_Bot(user_level=user_level)
     cl.user_session.set("ela_bot", ela_instance)
 
 
@@ -438,6 +586,20 @@ async def on_chat_resume(thread: ThreadDict):
 @cl.on_message
 async def main(message: cl.Message):
     ela_bot = cl.user_session.get("ela_bot")
+    
+    # 0. QUOTA CHECK — Bloque si l'utilisateur a épuisé son quota
+    user = cl.context.session.user
+    if user:
+        quota_info = await check_quota(user.identifier)
+        if not quota_info["allowed"]:
+            await cl.Message(
+                content=(
+                    f"⚠️ **Quota journalier atteint** ({quota_info['used']}/{quota_info['limit']} messages).\n\n"
+                    "Votre quota sera réinitialisé demain. "
+                    "Contactez votre superviseur si vous avez besoin de messages supplémentaires."
+                )
+            ).send()
+            return
 
     # 1. GESTION DES COMMANDES SPECIALES
 
@@ -683,5 +845,4 @@ async def on_code_lang(action: cl.Action):
         content=f"C'est noté pour **{lang}** !\n\n"
         "Quel modèle ou concept voulez-vous implémenter ? "
         "(ex: *MCO, VAR, ARCH, Test de Student...*)"
-
     ).send()

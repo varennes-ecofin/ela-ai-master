@@ -30,6 +30,7 @@ pydantic-settings==2.12.0
 
 # SQLAlchemy
 sqlalchemy==2.0.46
+bcrypt==4.3.0
 
 # System
 aiofiles==24.1.0
