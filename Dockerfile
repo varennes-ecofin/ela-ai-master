@@ -1,21 +1,23 @@
-# Utiliser une image Python légère
 FROM python:3.11-slim
 
-# Répertoire de travail
 WORKDIR /app
 
-# Installation des dépendances système (nécessaire pour certains packages)
-RUN apt-get update && apt-get install -y build-essential curl && rm -rf /var/lib/apt/lists/*
+# Dépendances système
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copie des requirements et installation
+# Dépendances Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copie du code de l'application
-COPY . .
+# Code applicatif uniquement
+COPY app.py main_ela.py rag_guard.py ingest.py chainlit.md ./
+COPY .chainlit/ .chainlit/
+COPY public/ public/
 
-# On expose le port 8000
 EXPOSE 8000
 
-# Commande de lancement
 CMD ["chainlit", "run", "app.py", "--host", "0.0.0.0", "--port", "8000"]
