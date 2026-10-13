@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 1.1 — 2026-10-06
+> **Version** : 1.2 — 2026-10-13
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : validé le 06/10/2026 — Phase 0 livrée (en test), Phase 1 à suivre
+> **Statut** : Phase 0 validée (13/10) · Phase 1a livrée (en test) · Phase 1b à suivre
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -170,14 +170,21 @@ Critères d'acceptation : une question M1 reçoit une réponse sourcée via Cere
 
 **Objectif** : une base de code maintenable et testable, sans changement fonctionnel visible.
 
-Tâches :
-1. Restructuration en paquet `src/ela` + `apps/` (§2.2) ; `pyproject.toml` + `uv` ; `ruff` ; `pytest` ; `pre-commit` ; GitHub Actions (lint + tests unitaires).
-2. `pydantic-settings` pour toute la configuration ; `logging` structuré (JSON en prod) à la place des `print`.
-3. **Ressources partagées** : embeddings, store, reranker et moteur SQL (pool async) chargés **une fois par processus** ; `ELA_Bot` devient un objet léger par session qui référence ces singletons.
-4. **Alembic** : migration initiale reflétant l'état actuel, puis migrations `courses`, `chunks`, `quiz_results`, `student_progress`, `ingestion_jobs`.
-5. Historique borné (fenêtre + résumé) ; persistance du quiz en base (reprise possible).
-6. Dockerfiles multi-stage ; l'image `admin` n'embarque plus torch ; `.dockerignore`.
-7. Montée de version Chainlit 2.12 / LangChain 1.4 / chromadb 1.5 avec vérification de la data layer custom (`LocalSQLAlchemyDataLayer`).
+Livrée en deux lots.
+
+**Lot 1a — livré le 13/10/2026**
+1. ✅ Restructuration en paquet `src/ela` + `apps/` (§2.2) ; `pyproject.toml` (`pip install -e .`, `uv` compatible) ; `ruff` ; `pytest` (39 tests) ; `pre-commit` ; GitHub Actions (lint + tests avec PostgreSQL).
+2. ✅ `pydantic-settings` pour toute la configuration (`.env` racine trouvé depuis les sous-dossiers) ; `logging` (JSON en Docker) à la place des `print`.
+3. ✅ **Ressources partagées** : embeddings, store, index BM25 par niveau, reranker et moteur SQL (pool async) chargés **une fois par processus**, préchargés au démarrage, rechargés si la base est reconstruite ; `ElaEngine` est un objet léger par session.
+4. ✅ Historique borné (fenêtre par tours et par caractères).
+5. ✅ Dockerfiles adaptés à la nouvelle structure ; `.dockerignore`.
+
+**Lot 1b — à suivre**
+6. **Alembic** : migration initiale (tables Chainlit + colonnes comptes), remplace le SQL manuel du README ; les tables `courses`, `chunks`, `quiz_results`, `student_progress`, `ingestion_jobs` arrivent avec les phases qui les utilisent.
+7. Dockerfiles multi-stage ; l'image `admin` sans torch (dépend du passage des embeddings par API en phase 2).
+8. Montée de version Chainlit 2.12 / LangChain 1.4 / chromadb 1.5 avec vérification de la data layer custom (`LocalSQLAlchemyDataLayer`).
+9. Optimisation des images de `public/` (≈ 45 Mo dans le dépôt).
+10. Persistance du quiz en base → reportée en phase 4 (Quiz 2.0) pour ne concevoir la table qu'une fois.
 
 Critères d'acceptation : `uv run pytest` vert ; `ruff check` vert ; démarrage d'une session < 1 s après le premier chargement ; 4 sessions simultanées sur le VPS sans augmentation de RAM par session ; `alembic upgrade head` idempotent.
 

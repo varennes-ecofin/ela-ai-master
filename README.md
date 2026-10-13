@@ -1,210 +1,129 @@
-# ELA AI - Econometrics Learning Assistant 🎓
+# ELA AI — Econometrics Learning Assistant 🎓
 
 ![ELA AI Banner](public/ela_banner.png)
 
-## 📖 Description
+ELA AI est un assistant pédagogique en économétrie (séries temporelles, économétrie financière) destiné aux étudiants du master ESA. Il répond **à partir des supports de cours LaTeX** de l'enseignant (RAG), analyse des graphiques ou équations en image, génère des quiz et des scripts Python/R.
 
-ELA AI est un assistant d'apprentissage intelligent spécialisé en économétrie, développé avec Chainlit et LangChain. Il combine deux approches puissantes :
-1.  **RAG (Retrieval-Augmented Generation)** : Pour répondre aux questions théoriques en se basant exclusivement sur des supports de cours LaTeX.
-2.  **Vision par Ordinateur** : Pour analyser et expliquer des graphiques, tableaux ou équations manuscrites via des modèles multimodaux.
+> Projet en cours de modernisation — voir `PLAN_MODERNISATION.md` (phases) et `CHANGELOG.md`.
 
-Le projet est désormais conçu pour la production avec une architecture conteneurisée (**Docker**) et une base de données persistante (**PostgreSQL**).
+## Fonctionnalités
 
-### ✨ Fonctionnalités principales
+- 🧠 **RAG** : recherche hybride (vecteurs + BM25) avec reranking, cloisonnée par niveau (M1 / M2 / Commun).
+- 👁️ **Vision** : analyse d'images (plusieurs par message) par un modèle multimodal.
+- 🎓 **Quiz** et 💻 **Atelier Code** (Python / R) ancrés dans le cours.
+- 🔐 **Comptes** en base PostgreSQL (bcrypt), rôles, niveau, quota journalier.
+- 🛠️ **Backoffice** (Streamlit) : utilisateurs, base de connaissances, activité, feedbacks, conversations.
+- 🔌 **Fournisseurs LLM interchangeables** (Cerebras, ILaaS, Groq — API compatibles OpenAI) par simple configuration.
 
-- 🧠 **RAG Expert** : Recherche hybride (BM25 + Sémantique) sourcée exclusivement dans vos documents.
-- 👁️ **Vision IA** : Analyse d'images (courbes, matrices, scans) via un modèle multimodal (`qwen-3.8-27b`), plusieurs images par message.
-- 💾 **Persistance SQL** : Historique des conversations et feedbacks stockés durablement dans PostgreSQL.
-- ⚡ **Reranking intelligent** : Utilisation de FlashRank pour optimiser la pertinence des résultats.
-- 🔐 **Authentification** : Système multi-utilisateurs (Étudiant / Superviseur) sécurisé.
-- 📐 **Support LaTeX** : Affichage natif des formules mathématiques.
+## Architecture
 
----
-
-## 🚀 Installation & Déploiement
-
-Vous avez deux modes d'installation : **Production (Docker)** ou **Développement (Local)**.
-
-### Prérequis
-
-- Git
-- Une clé API **Cerebras** ([cloud.cerebras.ai](https://cloud.cerebras.ai)) — ILaaS et Groq sont également supportés (API compatibles OpenAI)
-- **Mode Docker** : Docker Desktop & Docker Compose
-- **Mode Local** : Python 3.11+ et PostgreSQL installé localement
-
-### Option A : Déploiement Docker (Recommandé)
-
-C'est la méthode la plus simple pour lancer l'application avec sa base de données.
-
-1.  **Cloner le repository**
-    ```bash
-    git clone [https://github.com/varennes-ecofin/ela-ai-master.git](https://github.com/varennes-ecofin/ela-ai-master.git)
-    cd ela-ai-master
-    ```
-
-2.  **Configuration**
-    Copiez `.env.example` en `.env` et renseignez au minimum :
-    ```ini
-    CHAINLIT_AUTH_SECRET=   # chainlit create-secret
-    POSTGRES_PASSWORD=
-    CEREBRAS_API_KEY=
-    SITE_ADDRESS=           # domaine, IP du serveur ou localhost
-    ADMIN_BASIC_AUTH_HASH=  # python generate_hash.py --caddy
-    ```
-    Toutes les variables (fournisseurs LLM, modèles, chemins) sont documentées dans `.env.example`.
-
-3.  **Lancer les services**
-    ```bash
-    docker compose up -d --build
-    ```
-
-4.  **Initialiser la Base de Données (Premier lancement uniquement)**
-    ```bash
-    docker compose exec db psql -U chainlit_user -d chainlit_db -c "
-    CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, identifier TEXT UNIQUE, \"createdAt\" TEXT, metadata JSONB);
-    CREATE TABLE IF NOT EXISTS threads (id UUID PRIMARY KEY, name TEXT, \"createdAt\" TEXT, \"userId\" UUID REFERENCES users(id), \"userIdentifier\" TEXT, tags TEXT[], metadata JSONB);
-    CREATE TABLE IF NOT EXISTS steps (id UUID PRIMARY KEY, name TEXT, type TEXT, \"threadId\" UUID REFERENCES threads(id), \"parentId\" UUID, \"disableFeedback\" BOOLEAN, streaming BOOLEAN, \"waitForAnswer\" BOOLEAN, \"isError\" BOOLEAN, metadata JSONB, tags TEXT[], input TEXT, output TEXT, \"createdAt\" TEXT, start TEXT, \"end\" TEXT, generation JSONB, \"showInput\" TEXT, language TEXT, indent INT, \"defaultOpen\" BOOLEAN);
-    CREATE TABLE IF NOT EXISTS elements (id UUID PRIMARY KEY, \"threadId\" UUID REFERENCES threads(id), type TEXT, url TEXT, \"chainlitKey\" TEXT, name TEXT, display TEXT, \"objectKey\" TEXT, size TEXT, page INT, language TEXT, \"forId\" UUID, mime TEXT, props JSONB);
-    CREATE TABLE IF NOT EXISTS feedbacks (id UUID PRIMARY KEY, \"forId\" UUID REFERENCES steps(id), value INT, comment TEXT);
-    INSERT INTO users (id, identifier, \"createdAt\") VALUES (gen_random_uuid(), 'etudiant', NOW()) ON CONFLICT (identifier) DO NOTHING;
-    "
-    ```
-
-L'application est servie en HTTPS par Caddy : **https://SITE_ADDRESS/** (chat) et **https://SITE_ADDRESS/admin/** (backoffice, authentification basique). Avec une IP ou `localhost`, le certificat est auto-signé (avertissement navigateur) ; avec un nom de domaine, Let's Encrypt est utilisé automatiquement.
-
-### Option B : Installation Locale (Développement)
-
-1.  **Environnement virtuel**
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate  # ou .venv\Scripts\activate sur Windows
-    pip install -r requirements.txt
-    ```
-
-2.  **Configuration .env**
-    Attention à l'URL de la base de données qui doit pointer vers votre localhost :
-    ```ini
-    DATABASE_URL=postgresql+asyncpg://chainlit_user:securepassword@localhost:****/chainlit_db
-    ```
-
-3.  **Lancer l'application**
-    ```bash
-    chainlit run app.py -w
-    ```
-
----
-
-## 📚 Configuration de la base de connaissances
-
-Pour que le RAG fonctionne, vous devez ingérer vos cours.
-
-1.  **Préparer vos fichiers**
-    Placez vos fichiers `.tex` dans le dossier `./latex/`.
-
-2.  **Lancer l'ingestion**
-    ```bash
-    python ingest.py
-    ```
-    *Cela va générer la base vectorielle dans le dossier `./chroma_db/`.*
-
----
-
-## 🎮 Utilisation
-
-### Identifiants par défaut
-
-| Utilisateur | Mot de passe | Rôle |
-|-------------|--------------|------|
-| `etudiant` | *(défini en base)* | Accès standard |
-| `supervisor` | *(défini en base)* | Accès complet (admin) |
-
-*Les comptes sont stockés dans la table `users` (hash bcrypt) et gérés depuis le backoffice ; `generate_hash.py` permet de créer un hash manuellement.*
-
-### Modes d'interaction
-
-- **💬 Chat & Vision** : Posez une question ou glissez-déposez une image (graphique, équation) pour obtenir une explication.
-- **🎓 Quiz Interactif** : Cliquez sur le starter "Générer un quiz" (ou tapez `/start_quiz`). ELA vous demandera un sujet et lancera une série de questions interactives.
-- **💻 Atelier Code** : Cliquez sur le starter "Atelier Code" (ou tapez `/code_workshop`). Choisissez votre langage (**Python** ou **R**) et le modèle à implémenter. ELA générera un script complet avec données synthétiques.
-
----
-
-## 🏗️ Architecture du projet
-
-```text
-ela-ai-master/
-├── .chainlit/              # Configuration Chainlit et traductions
-├── .files_ela/             # Stockage physique des images uploadées (Volume Docker)
-├── chroma_db/              # Base de données vectorielle (RAG - Embeddings des cours)
-├── latex/                  # Fichiers sources .tex (Cours d'économétrie)
-├── public/                 # Assets statiques (Logos, icônes des starters)
-├── ela/                    # Paquet partagé : config (pydantic-settings), fabrique LLM
-├── tests/                  # Tests hors-ligne (pytest)
-├── .env                    # Variables d'environnement (Secrets, API Keys, DB URL)
-├── .env.example            # Modèle documenté du .env
-├── Caddyfile               # Reverse proxy HTTPS (chat + /admin)
-├── app.py                  # Interface Chat (Chainlit) + Gestion Base de Données
-├── main_ela.py             # Cerveau RAG : Orchestration LangChain et Vision
-├── rag_guard.py            # Contrôle qualité : Grader de pertinence et filtrage de domaine
-├── chainlit.md             # Message d'accueil (Markdown)
-├── docker-compose.yml      # Orchestration des services (App + PostgreSQL)
-├── Dockerfile              # Configuration de l'image Docker Python
-├── ingest.py               # Script d'indexation des documents vers ChromaDB
-└── requirements.txt        # Liste des dépendances Python
 ```
----
+ela-ai/
+├── pyproject.toml          # paquet `ela-ai`, dépendances, outils (ruff, pytest)
+├── src/ela/                # cœur applicatif (installé en paquet)
+│   ├── config.py           #   configuration (pydantic-settings, .env)
+│   ├── llm.py              #   fabrique de modèles (Cerebras / ILaaS / Groq, fallback, vision)
+│   ├── engine.py           #   moteur de session (ask / quiz / code)
+│   ├── prompts.py, guard.py, history.py
+│   ├── retrieval/          #   ressources partagées, retriever scopé par niveau
+│   ├── ingestion/          #   parseur LaTeX + pipeline `ela-ingest`
+│   ├── db/                 #   moteur SQL partagé, comptes, threads
+│   └── cli/                #   `ela-users`, `ela-hash`
+├── apps/chat/              # application Chainlit (app.py, data_layer.py)
+├── apps/admin/             # backoffice Streamlit
+├── tests/                  # tests unitaires + intégration PostgreSQL
+├── .chainlit/, public/, chainlit.md   # configuration et assets Chainlit (racine)
+├── data/latex/             # cours .tex  (non versionné)   data/chroma_db/  base vectorielle
+├── Caddyfile, docker-compose.yml, Dockerfile, apps/admin/Dockerfile
+└── .env.example            # modèle documenté de configuration
+```
 
-## 🔧 Configuration avancée
+## Installation (développement)
 
-### Modifier le fournisseur ou le modèle LLM
+Prérequis : Python 3.11 ou 3.12, PostgreSQL local, une clé API Cerebras.
 
-Aucune modification de code : tout se règle dans `.env` (voir `ela/config.py` et `ela/llm.py`).
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # Windows   (source .venv/bin/activate sous Linux/macOS)
+pip install -e ".[admin,dev]"     # paquet ela + backoffice + outils de dev
+copy .env.example .env            # puis renseigner les valeurs (voir ci-dessous)
+```
+
+Variables minimales du `.env` : `CHAINLIT_AUTH_SECRET` (`chainlit create-secret`), `DATABASE_URL`, `CEREBRAS_API_KEY`. Toutes les autres sont documentées dans `.env.example`.
+
+> Sous VS Code, le `.env` est injecté dans le terminal intégré à son ouverture : après toute modification, fermez et rouvrez le terminal.
+
+### Base de données et comptes
+
+```bash
+ela-users check                                   # connexion + schéma
+ela-users migrate                                 # ajoute les colonnes de comptes (idempotent)
+ela-users create admin --role admin --level ALL   # mot de passe demandé au clavier
+ela-users create etudiant1 --level M1 --quota 50
+ela-users list
+```
+
+La base Chainlit (tables `users`, `threads`, `steps`, `elements`, `feedbacks`) doit exister ; le script SQL d'initialisation est dans `GUIDE_backoffice.md` (remplacé par Alembic en phase 1b).
+
+### Base de connaissances
+
+Déposez vos fichiers `.tex` dans `data/latex/{M1|M2|Commun}/{NomDuCours}/` puis :
+
+```bash
+ela-ingest --dry-run      # vérifie la structure et affiche le rapport
+ela-ingest                # calcule les embeddings et (re)construit data/chroma_db
+```
+
+### Lancer
+
+```bash
+chainlit run apps/chat/app.py -w         # chat : http://localhost:8000
+cd apps/admin && streamlit run app.py    # backoffice : http://localhost:8501
+```
+
+### Qualité
+
+```bash
+pytest -q                                 # tests (intégration DB si TEST_DATABASE_URL est défini)
+ruff check src apps tests && ruff format src apps tests
+pre-commit install                        # hooks ruff au commit
+```
+
+## Déploiement (Docker, serveur)
+
+```bash
+docker compose up -d --build
+```
+
+Services : `caddy` (HTTPS automatique, ports 80/443), `app` (Chainlit), `admin` (Streamlit sous `/admin`, protégé par `ADMIN_BASIC_AUTH_*`), `db` (PostgreSQL 15 + pgvector). `SITE_ADDRESS` fixe l'adresse servie : un nom de domaine donne un certificat Let's Encrypt, une IP ou `localhost` un certificat auto-signé. Compose force `DATABASE_URL` vers le service `db` : le `.env` reste identique en local et sur le serveur.
+
+Premier démarrage : créer les tables Chainlit puis `docker compose exec app ela-users migrate` et `docker compose exec -it app ela-users create admin --role admin --level ALL`.
+
+## Configuration des modèles
+
+Aucune modification de code : tout se règle dans `.env` (voir `src/ela/config.py` et `src/ela/llm.py`).
 
 ```ini
-LLM_PROVIDER=cerebras            # cerebras | ilaas | groq (API compatibles OpenAI)
-LLM_MODEL_CHAT=gpt-oss-120b      # texte : réponses, quiz, atelier code
+LLM_PROVIDER=cerebras            # cerebras | ilaas | groq
+LLM_MODEL_CHAT=gpt-oss-120b      # réponses, quiz, atelier code
 LLM_MODEL_VISION=qwen-3.8-27b    # utilisé automatiquement quand une image est jointe
-LLM_MODEL_FALLBACK=qwen-3.8-27b  # modèle de secours (texte), `none` pour désactiver
-LLM_REASONING_EFFORT=low         # gpt-oss : low|medium|high ; qwen : none|low|...
+LLM_MODEL_FALLBACK=qwen-3.8-27b  # modèle de secours (`none` pour désactiver)
+LLM_REASONING_EFFORT=low         # gpt-oss : low|medium|high ; qwen : none|low|... ; omit = non envoyé
 ```
 
-### Stockage des fichiers
-
-Les images uploadées sont stockées localement via la classe `LocalStorageClient` dans `app.py`. En production Docker, ce dossier est monté via un volume pour ne pas perdre les données au redémarrage.
-
----
-
-## 🐛 Résolution de problèmes
-
-### Erreur "getaddrinfo failed" (Docker vs Local)
-
-Si vous passez du serveur à votre PC local, n'oubliez pas de changer `DATABASE_URL` dans le `.env` :
-
-* Serveur Docker : `@db:****`
-* PC Local : `@localhost:****`
-
-### Erreur d'affichage des icônes (Starters)
-
-Assurez-vous que le dossier `public` est bien monté dans le `docker-compose.yml` et videz le cache de votre navigateur.
-
----
-
-## 📊 Stack technique
+## Stack
 
 | Composant | Technologie |
 | --- | --- |
-| **Frontend/Backend** | Chainlit 2.9.6 |
-| **LLM Engine** | Cerebras (`gpt-oss-120b`, `qwen-3.8-27b`) — ILaaS / Groq en option |
-| **Reverse proxy** | Caddy 2 (HTTPS automatique) |
-| **Database** | PostgreSQL 15 + pgvector + AsyncPG |
-| **Vector Store** | ChromaDB (migration pgvector prévue en phase 2) |
-| **Orchestration** | Docker Compose |
-| **Framework IA** | LangChain |
+| Front chat | Chainlit 2.9 |
+| LLM | Cerebras (`gpt-oss-120b`, `qwen-3.8-27b`) — ILaaS / Groq en option |
+| Orchestration | LangChain 1.x |
+| Vector store | ChromaDB (pgvector prévu en phase 2) |
+| Embeddings / rerank | sentence-transformers, FlashRank (bge-m3 + reranker multilingue prévus en phase 2) |
+| Base de données | PostgreSQL 15 + pgvector, SQLAlchemy (asyncpg / psycopg2) |
+| Backoffice | Streamlit (FastAPI + HTMX prévu en phase 5) |
+| Reverse proxy | Caddy 2 |
 
----
+## Licence & contact
 
-## 📝 License & Contact
-
-Ce projet est développé dans un cadre pédagogique.
-© 2026 - Gilles de Truchis
-
-**GitHub** : [github.com/varennes-ecofin](https://github.com/varennes-ecofin)
+Projet développé dans un cadre pédagogique — © 2026 Gilles de Truchis — [github.com/varennes-ecofin](https://github.com/varennes-ecofin)

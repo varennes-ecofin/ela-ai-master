@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ela-ai"
+version = "2.0.0a1"
+description = "ELA — Econometrics Learning Assistant (RAG chatbot for master-level econometrics courses)"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "Proprietary — pedagogical use" }
+authors = [{ name = "Gilles de Truchis" }]
+
+dependencies = [
+  # Chat front-end
+  "chainlit==2.9.6",
+  # LangChain
+  "langchain-core==1.2.7",
+  "langchain-community==0.4.1",
+  "langchain-classic==1.0.1",
+  "langchain-chroma==1.1.0",
+  "langchain-huggingface==1.2.0",
+  "langchain-openai==1.1.7",
+  "langchain-text-splitters==1.1.0",
+  # Vector store, embeddings, reranking
+  "chromadb==1.4.1",
+  "sentence-transformers==5.2.0",
+  "transformers==4.57.6",
+  "rank-bm25==0.2.2",
+  "flashrank==0.2.10",
+  # Configuration
+  "python-dotenv==1.2.1",
+  "pydantic==2.12.5",
+  "pydantic-settings==2.12.0",
+  # Database
+  "sqlalchemy==2.0.46",
+  "asyncpg==0.31.0",
+  "psycopg2-binary==2.9.11",
+  "bcrypt==4.3.0",
+  # Misc
+  "aiofiles==24.1.0",
+  "watchfiles==1.1.1",
+]
+
+[project.optional-dependencies]
+admin = [
+  "streamlit==1.45.1",
+  "pandas==2.3.0",
+  "plotly==6.5.2",
+]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.6",
+  "pre-commit>=3.8",
+]
+
+[project.scripts]
+ela-ingest = "ela.ingestion.pipeline:main"
+ela-users = "ela.cli.users:main"
+ela-hash = "ela.cli.hash:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "apps", "tests"]
+extend-exclude = ["Other", "data", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "D"]
+ignore = [
+  "D100", "D104", "D105", "D107",   # module/package/magic-method docstrings
+  "D203", "D213",                   # conflicting docstring styles
+  "E402",                           # imports after the Windows event-loop fix
+  "N999",                           # non-PEP8 module names (legacy admin views)
+  "D413",                           # no blank line after the last docstring section
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+"apps/admin/*" = ["D", "E501"]
+"src/ela/ingestion/latex.py" = ["E501", "D301"]  # legacy parser, rewritten in phase 2
+"src/ela/cli/*" = ["E501"]
+"src/ela/prompts.py" = ["E501", "W291"]
+"src/ela/guard.py" = ["E501"]
+"apps/chat/app.py" = ["D103"]  # Chainlit callbacks are self-describing
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"

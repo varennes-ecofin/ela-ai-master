@@ -19,17 +19,13 @@ backoffice_deploy.txt*
 # --- Notes de travail, médias, anciens scripts (hors code source) ---
 Other/
 
-# --- Données runtime (volumes Docker) ---
-data/chroma_db/
-data/chroma_db_new/
-data/chroma_db_old/
+# --- Données runtime : cours LaTeX (propriété intellectuelle), base vectorielle,
+#     modèles téléchargés (reranker)... Tout `data/` reste hors du dépôt.
+data/
 chroma_db/
+latex/
 .files_ela/
 .files/
-
-# --- Supports de cours (propriété intellectuelle, chargés à la main sur le serveur) ---
-data/latex/
-latex/
 
 # --- Chainlit : fichiers générés (on versionne uniquement config.toml) ---
 .chainlit/*

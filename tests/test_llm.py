@@ -62,9 +62,7 @@ def test_missing_api_key_is_explicit():
 
 
 def test_groq_does_not_send_reasoning_effort():
-    m = build_chat_model(
-        "llama-3.3-70b-versatile", "groq", settings=_settings(groq_api_key="g")
-    )
+    m = build_chat_model("llama-3.3-70b-versatile", "groq", settings=_settings(groq_api_key="g"))
     assert m.reasoning_effort is None
     assert "groq" in m.openai_api_base
 

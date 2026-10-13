@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, modernisation]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: ela
+          POSTGRES_PASSWORD: ela
+          POSTGRES_DB: ela_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ela -d ela_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      # Light install: the package plus what the unit/integration tests need
+      # (no torch / sentence-transformers / chromadb — they are mocked in tests).
+      - name: Install
+        run: |
+          uv venv
+          uv pip install --no-deps -e .
+          uv pip install \
+            "langchain-core==1.2.7" "langchain-openai==1.1.7" "langchain-community==0.4.1" \
+            "langchain-classic==1.0.1" "langchain-text-splitters==1.1.0" "rank-bm25==0.2.2" \
+            "pydantic==2.12.5" "pydantic-settings==2.12.0" "sqlalchemy==2.0.46" "asyncpg==0.31.0" \
+            "psycopg2-binary==2.9.11" "bcrypt==4.3.0" "python-dotenv==1.2.1" \
+            pytest pytest-asyncio ruff
+      - name: Lint
+        run: |
+          uv run ruff check src apps tests
+          uv run ruff format --check src apps tests
+      - name: Tests
+        env:
+          TEST_DATABASE_URL: postgresql://ela:ela@localhost:5432/ela_test
+        run: uv run pytest -q
