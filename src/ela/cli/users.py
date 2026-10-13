@@ -139,7 +139,7 @@ def cmd_check(_args) -> None:
         missing = REQUIRED_COLUMNS - cols
         if missing:
             print("⚠️  Colonnes manquantes :", ", ".join(sorted(missing)), "→ migration à appliquer.")
-            print("   Lancez : ela-users migrate")
+            print("   Lancez : ela-db upgrade (ou ela-users migrate)")
             cur.execute("SELECT COUNT(*) FROM users")
             print(f"ℹ️  {cur.fetchone()[0]} compte(s) (aucun mot de passe possible avant migration).")
             return
@@ -150,22 +150,11 @@ def cmd_check(_args) -> None:
 
 
 def cmd_migrate(_args) -> None:
-    """Add the account columns to ``users`` (idempotent, Chainlit-compatible)."""
-    statements = [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'student'",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS level TEXT NOT NULL DEFAULT 'M1'",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_quota INTEGER DEFAULT 50",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP",
-        "CREATE INDEX IF NOT EXISTS idx_users_identifier ON users(identifier)",
-    ]
-    with _connect() as conn, conn.cursor() as cur:
-        if not _schema_columns(cur):
-            sys.exit("❌ Table users absente : initialisez d'abord la base Chainlit (voir README).")
-        for stmt in statements:
-            cur.execute(stmt)
-    print("✅ Migration appliquée (colonnes de comptes présentes).")
+    """Apply the database migrations (same as ``ela-db upgrade``)."""
+    from ela.db.migrate import upgrade
+
+    upgrade()
+    print("✅ Migrations appliquées (tables Chainlit + colonnes de comptes).")
 
 
 def cmd_list(_args) -> None:

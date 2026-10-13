@@ -20,9 +20,6 @@ persist_user_env = false
 mask_user_env = false
 
 # Authorized origins
-# Origines autorisées (CORS). En production l'app est servie par Caddy sur la même
-# origine : aucune entrée supplémentaire n'est nécessaire. Les entrées ci-dessous
-# couvrent l'accès direct en développement (chainlit run app.py).
 allow_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
 [features]
@@ -80,18 +77,13 @@ reaction_on_message_received = false
     # Enable Model Context Protocol (MCP) features
     enabled = false
 
-[features.mcp.sse]
-    enabled = true
+    # Developer-configured MCP servers (Chainlit >= 2.12): see
+    # https://docs.chainlit.io for the [[features.mcp.servers]] syntax.
 
-[features.mcp.streamable-http]
-    enabled = true
-
-[features.mcp.stdio]
-    enabled = true
-    # Only the executables in the allow list can be used for MCP stdio server.
-    # Only need the base name of the executable, e.g. "npx", not "/usr/bin/npx".
-    # Please don't comment this line for now, we need it to parse the executable name.
-    allowed_executables = [ "npx", "uvx" ]
+    [features.mcp.user_servers]
+        # Opt-in: allow end-users to connect their own SSE or streamable-http MCP servers.
+        enabled = false
+        allowed_urls = []
 
 [UI]
 # Name of the assistant.
@@ -172,4 +164,4 @@ default_avatar_file_url = "/public/ela.png"
 #     target = "_blank" (default)  # Optional: "_self", "_parent", "_top".
 
 [meta]
-generated_by = "2.9.6"
+generated_by = "2.12.0"

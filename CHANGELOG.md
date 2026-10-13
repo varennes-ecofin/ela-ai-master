@@ -3,6 +3,18 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [2.0.0a2] — 2026-10-13 — Phase 1b : migrations, montée de versions, Docker
+
+### Ajouté
+- **Alembic** embarqué dans le paquet (`src/ela/db/migrations/`) et commande `ela-db` (`upgrade`, `current`, `history`, `downgrade`). Migration `0001_baseline` idempotente : tables Chainlit 2.12 (dont `elements.autoPlay/playerConfig`, `steps.command`, `feedbacks.threadId`), colonnes de comptes ELA, index, vue `v_daily_usage`. `ela-users migrate` délègue à Alembic. Remplace le SQL manuel du README/GUIDE.
+- Test d'intégration de la data layer personnalisée sous Chainlit 2.12 (`tests/test_data_layer.py`) : cycle complet utilisateur → fil → étape → image stockée localement → feedback → reprise.
+
+### Modifié
+- **Versions** : Chainlit 2.9.6 → 2.12.0 ; LangChain core 1.2.7 → 1.6.10, openai 1.7.1, community 0.4.2, classic 1.0.8, huggingface 1.2.3 ; chromadb 1.4.1 → 1.5.9 ; sentence-transformers 5.7.0 ; pydantic 2.14.1 ; SQLAlchemy 2.0.54 ; bcrypt 5.0 ; Streamlit 1.65. Jeu de versions résolu avec `uv`, suite de tests verte.
+- `.chainlit/config.toml` migré au format 2.12 (sections MCP) ; `cl.Action` sans arguments obsolètes.
+- **Dockerfiles multi-stage** (builder → runtime sans compilateur, utilisateur non-root, healthchecks, torch CPU-only) ; caches des modèles HF et FlashRank dans `data/` (volume) : téléchargés une seule fois.
+- **Images de `public/`** optimisées : fond de connexion 7,9 Mo → 0,24 Mo, avatar 0,7 → 0,12 Mo, bannière 4,5 → 0,28 Mo, logos réduits. Les fichiers non référencés (`ela2.png` 19 Mo, `etudiant.png` 8 Mo, `custom-background.png`, `logo.pdf`) sont retirés du dépôt.
+
 ## [2.0.0a1] — 2026-10-13 — Phase 1a : fondations (structure, ressources partagées, outillage)
 
 ### Ajouté

@@ -27,7 +27,7 @@ ela-ai/
 │   ├── prompts.py, guard.py, history.py
 │   ├── retrieval/          #   ressources partagées, retriever scopé par niveau
 │   ├── ingestion/          #   parseur LaTeX + pipeline `ela-ingest`
-│   ├── db/                 #   moteur SQL partagé, comptes, threads
+│   ├── db/                 #   moteur SQL partagé, comptes, threads, migrations Alembic (`ela-db`)
 │   └── cli/                #   `ela-users`, `ela-hash`
 ├── apps/chat/              # application Chainlit (app.py, data_layer.py)
 ├── apps/admin/             # backoffice Streamlit
@@ -56,14 +56,14 @@ Variables minimales du `.env` : `CHAINLIT_AUTH_SECRET` (`chainlit create-secret`
 ### Base de données et comptes
 
 ```bash
+ela-db upgrade                                    # crée/met à jour le schéma (Alembic, idempotent)
 ela-users check                                   # connexion + schéma
-ela-users migrate                                 # ajoute les colonnes de comptes (idempotent)
 ela-users create admin --role admin --level ALL   # mot de passe demandé au clavier
 ela-users create etudiant1 --level M1 --quota 50
 ela-users list
 ```
 
-La base Chainlit (tables `users`, `threads`, `steps`, `elements`, `feedbacks`) doit exister ; le script SQL d'initialisation est dans `GUIDE_backoffice.md` (remplacé par Alembic en phase 1b).
+`ela-db upgrade` crée les tables Chainlit (`users`, `threads`, `steps`, `elements`, `feedbacks`) et les colonnes de comptes ELA sur une base vide, et complète sans rien casser une base existante. Les migrations sont dans `src/ela/db/migrations/` (`ela-db history`, `ela-db current`).
 
 ### Base de connaissances
 
@@ -97,7 +97,7 @@ docker compose up -d --build
 
 Services : `caddy` (HTTPS automatique, ports 80/443), `app` (Chainlit), `admin` (Streamlit sous `/admin`, protégé par `ADMIN_BASIC_AUTH_*`), `db` (PostgreSQL 15 + pgvector). `SITE_ADDRESS` fixe l'adresse servie : un nom de domaine donne un certificat Let's Encrypt, une IP ou `localhost` un certificat auto-signé. Compose force `DATABASE_URL` vers le service `db` : le `.env` reste identique en local et sur le serveur.
 
-Premier démarrage : créer les tables Chainlit puis `docker compose exec app ela-users migrate` et `docker compose exec -it app ela-users create admin --role admin --level ALL`.
+Premier démarrage : `docker compose exec app ela-db upgrade` puis `docker compose exec -it app ela-users create admin --role admin --level ALL`. Les modèles (embeddings, reranker) sont téléchargés au premier lancement dans `data/` (volume), donc une seule fois.
 
 ## Configuration des modèles
 
@@ -115,12 +115,12 @@ LLM_REASONING_EFFORT=low         # gpt-oss : low|medium|high ; qwen : none|low|.
 
 | Composant | Technologie |
 | --- | --- |
-| Front chat | Chainlit 2.9 |
+| Front chat | Chainlit 2.12 |
 | LLM | Cerebras (`gpt-oss-120b`, `qwen-3.8-27b`) — ILaaS / Groq en option |
 | Orchestration | LangChain 1.x |
 | Vector store | ChromaDB (pgvector prévu en phase 2) |
 | Embeddings / rerank | sentence-transformers, FlashRank (bge-m3 + reranker multilingue prévus en phase 2) |
-| Base de données | PostgreSQL 15 + pgvector, SQLAlchemy (asyncpg / psycopg2) |
+| Base de données | PostgreSQL 15 + pgvector, SQLAlchemy (asyncpg / psycopg2), Alembic |
 | Backoffice | Streamlit (FastAPI + HTMX prévu en phase 5) |
 | Reverse proxy | Caddy 2 |
 

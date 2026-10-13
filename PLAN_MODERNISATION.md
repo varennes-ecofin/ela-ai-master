@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 1.2 — 2026-10-13
+> **Version** : 1.3 — 2026-10-13
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phase 0 validée (13/10) · Phase 1a livrée (en test) · Phase 1b à suivre
+> **Statut** : Phase 0 validée · Phase 1a validée (13/10) · Phase 1b livrée (en test) · Phase 2 à suivre
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -179,11 +179,11 @@ Livrée en deux lots.
 4. ✅ Historique borné (fenêtre par tours et par caractères).
 5. ✅ Dockerfiles adaptés à la nouvelle structure ; `.dockerignore`.
 
-**Lot 1b — à suivre**
-6. **Alembic** : migration initiale (tables Chainlit + colonnes comptes), remplace le SQL manuel du README ; les tables `courses`, `chunks`, `quiz_results`, `student_progress`, `ingestion_jobs` arrivent avec les phases qui les utilisent.
-7. Dockerfiles multi-stage ; l'image `admin` sans torch (dépend du passage des embeddings par API en phase 2).
-8. Montée de version Chainlit 2.12 / LangChain 1.4 / chromadb 1.5 avec vérification de la data layer custom (`LocalSQLAlchemyDataLayer`).
-9. Optimisation des images de `public/` (≈ 45 Mo dans le dépôt).
+**Lot 1b — livré le 13/10/2026**
+6. ✅ **Alembic** embarqué (`ela-db upgrade`), migration de base idempotente (tables Chainlit 2.12 + colonnes comptes), remplace le SQL manuel ; les tables `courses`, `chunks`, `quiz_results`, `student_progress`, `ingestion_jobs` arrivent avec les phases qui les utilisent.
+7. ✅ Dockerfiles multi-stage, non-root, healthchecks, torch CPU ; caches de modèles persistants dans `data/`. L'image `admin` garde torch tant que l'ingestion calcule les embeddings en local (phase 2).
+8. ✅ Chainlit 2.12 / LangChain 1.6 / chromadb 1.5 ; data layer custom validée par un test d'intégration complet.
+9. ✅ Images de `public/` optimisées (≈ 45 Mo → < 1 Mo pour les fichiers utilisés ; fichiers inutilisés retirés).
 10. Persistance du quiz en base → reportée en phase 4 (Quiz 2.0) pour ne concevoir la table qu'une fois.
 
 Critères d'acceptation : `uv run pytest` vert ; `ruff check` vert ; démarrage d'une session < 1 s après le premier chargement ; 4 sessions simultanées sur le VPS sans augmentation de RAM par session ; `alembic upgrade head` idempotent.

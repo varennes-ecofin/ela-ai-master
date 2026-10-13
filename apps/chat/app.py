@@ -150,8 +150,8 @@ async def main(message: cl.Message):
     if message.content == "/code_workshop":
         await threads_db.rename_thread(cl.context.session.thread_id, "💻 Atelier Code")
         actions = [
-            cl.Action(name="code_lang", value="Python", label="Python", payload={"value": "Python"}),
-            cl.Action(name="code_lang", value="R", label="R", payload={"value": "R"}),
+            cl.Action(name="code_lang", label="Python", payload={"value": "Python"}),
+            cl.Action(name="code_lang", label="R", payload={"value": "R"}),
         ]
         await cl.Message(
             content="💻 **Bienvenue dans l'Atelier Code !**\n\n"
@@ -264,7 +264,7 @@ async def _ask_next_question() -> None:
                 name="quiz_answer",
                 payload={"value": str(i)},
                 label=f"{_LETTERS[i]}) {clean_option}",
-                description="Cliquez pour choisir",
+                tooltip="Cliquez pour choisir",
             )
         )
     await cl.Message(

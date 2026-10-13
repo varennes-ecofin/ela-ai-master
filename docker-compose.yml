@@ -51,6 +51,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - LOG_JSON=true
     volumes:
+      # data/ : cours LaTeX, base vectorielle, caches de modèles (HF, FlashRank)
       - ./data:/app/data
       - ./.files_ela:/app/.files_ela
       - ./public:/app/public
