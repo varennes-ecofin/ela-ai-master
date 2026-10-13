@@ -1,8 +1,60 @@
-__pycache__/
-*.pyc
+# ============================================================
+# ELA AI — .gitignore
+# ============================================================
+
+# --- Secrets & configuration locale (JAMAIS versionnés) ---
 .env
+.env.*
+!.env.example
+**/secrets.toml
+**/.streamlit/secrets.toml
+*.pem
+*.key
+vpslog.txt
+hashhistory.txt*
+backoffice_deploy.txt*
+*.bak
+*.backup
+
+# --- Notes de travail, médias, anciens scripts (hors code source) ---
+Other/
+
+# --- Données runtime (volumes Docker) ---
+data/chroma_db/
+data/chroma_db_new/
+data/chroma_db_old/
 chroma_db/
+.files_ela/
+.files/
+
+# --- Supports de cours (propriété intellectuelle, chargés à la main sur le serveur) ---
+data/latex/
+latex/
+
+# --- Chainlit : fichiers générés (on versionne uniquement config.toml) ---
+.chainlit/*
+!.chainlit/config.toml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
 .venv/
-.chainlit/
-latex
-images
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Éditeurs / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/

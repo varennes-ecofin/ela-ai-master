@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.backup
+*.bak
+Other/
+data/
+.files_ela/
+.files/
+__pycache__/
+*.pyc
+.git/
+.venv/
+.pytest_cache/
+.ruff_cache/
+vpslog.txt
+**/secrets.toml

@@ -1,0 +1,38 @@
+# ============================================================
+# ELA AI — reverse proxy Caddy
+#  - HTTPS automatique (Let's Encrypt pour un domaine, certificat
+#    interne pour une IP ou localhost)
+#  - /admin* -> backoffice (protégé par authentification basique)
+#  - /*      -> application Chainlit (websockets inclus)
+# ============================================================
+
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Backoffice : /admin (Streamlit avec --server.baseUrlPath admin)
+	@admin path /admin /admin/*
+	handle @admin {
+		basic_auth {
+			{$ADMIN_BASIC_AUTH_USER:admin} {$ADMIN_BASIC_AUTH_HASH}
+		}
+		reverse_proxy admin:8501
+	}
+
+	# Application Chainlit
+	handle {
+		reverse_proxy app:8000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

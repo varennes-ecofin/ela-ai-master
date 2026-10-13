@@ -1,0 +1,240 @@
+/* custom.css */
+/* Custom styling for ELA AI sidebar using ElementSidebar */
+
+/* Sidebar container */
+.sidebar {
+    background-color: #1a1a1a !important;
+    border-right: 1px solid #333 !important;
+    padding: 1rem !important;
+}
+
+/* Sidebar elements */
+.sidebar .MuiPaper-root {
+    background-color: #1a1a1a !important;
+}
+
+/* Text elements in sidebar */
+.sidebar .MuiTypography-root {
+    color: #e0e0e0 !important;
+    font-size: 0.9rem !important;
+    line-height: 1.6 !important;
+}
+
+/* Headers in sidebar */
+.sidebar h3 {
+    color: #888 !important;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    margin-top: 1rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+/* Sidebar title */
+.sidebar-title {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    font-weight: 700 !important;
+    font-size: 1.2rem !important;
+    margin-bottom: 1rem !important;
+}
+
+/* Conversation entries */
+.sidebar strong {
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+
+/* Active conversation marker */
+.sidebar em {
+    color: #667eea !important;
+    font-style: italic !important;
+}
+
+/* Conversation metadata (dates) */
+.sidebar ._Créée {
+    color: #888 !important;
+    font-size: 0.85rem !important;
+}
+
+/* Code blocks in sidebar (for IDs) */
+.sidebar code {
+    background-color: #2a2a2a !important;
+    padding: 0.2rem 0.4rem !important;
+    border-radius: 3px !important;
+    font-family: 'Monaco', 'Menlo', monospace !important;
+    color: #64b5f6 !important;
+}
+
+/* Links and interactive elements */
+.sidebar a {
+    color: #667eea !important;
+    text-decoration: none !important;
+    transition: color 0.2s ease !important;
+}
+
+.sidebar a:hover {
+    color: #764ba2 !important;
+}
+
+/* Scrollbar styling for sidebar */
+.sidebar::-webkit-scrollbar {
+    width: 8px !important;
+}
+
+.sidebar::-webkit-scrollbar-track {
+    background: #1a1a1a !important;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: #444 !important;
+    border-radius: 4px !important;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background: #555 !important;
+}
+
+/* Dividers in sidebar */
+.sidebar hr {
+    border: none !important;
+    height: 1px !important;
+    background-color: #333 !important;
+    margin: 1rem 0 !important;
+}
+
+/* Lists in sidebar */
+.sidebar ul {
+    padding-left: 1.5rem !important;
+    margin: 0.5rem 0 !important;
+}
+
+.sidebar li {
+    margin: 0.25rem 0 !important;
+    color: #e0e0e0 !important;
+}
+
+/* Icons and emojis */
+.sidebar span[role="img"] {
+    margin-right: 0.5rem !important;
+}
+
+/* Main chat area */
+.chat-container {
+    background-color: #0f0f0f !important;
+}
+
+/* Messages */
+.message {
+    background-color: #1a1a1a !important;
+    border-radius: 8px !important;
+    padding: 1rem !important;
+    margin: 0.5rem 0 !important;
+}
+
+/* User messages */
+.message.user {
+    background-color: #2a2a2a !important;
+}
+
+/* Assistant messages */
+.message.assistant {
+    background-color: #1a1a1a !important;
+    border-left: 3px solid #667eea !important;
+}
+
+/* Code blocks in messages */
+.message code {
+    background-color: #2a2a2a !important;
+    padding: 0.2rem 0.4rem !important;
+    border-radius: 3px !important;
+}
+
+/* LaTeX rendering */
+.message .katex {
+    color: #e0e0e0 !important;
+}
+
+/* Input area */
+.input-container {
+    background-color: #1a1a1a !important;
+    border-top: 1px solid #333 !important;
+}
+
+/* Buttons */
+button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 0.5rem 1rem !important;
+    font-weight: 600 !important;
+    transition: all 0.3s ease !important;
+    cursor: pointer !important;
+}
+
+button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4) !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100% !important;
+        position: fixed !important;
+        z-index: 1000 !important;
+    }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+    body {
+        background-color: #0f0f0f !important;
+        color: #e0e0e0 !important;
+    }
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.6 !important;
+    pointer-events: none !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sidebar > * {
+    animation: fadeIn 0.3s ease !important;
+}
+
+/* Highlight active conversation */
+.sidebar strong:has(+ em) {
+    color: #667eea !important;
+}
+
+/* Better spacing for readability */
+.sidebar p {
+    margin: 0.5rem 0 !important;
+}
+
+/* Status indicators */
+.sidebar .status-active {
+    color: #4caf50 !important;
+}
+
+.sidebar .status-inactive {
+    color: #888 !important;
+}
