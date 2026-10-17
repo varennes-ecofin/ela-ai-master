@@ -8,7 +8,7 @@ ELA AI est un assistant pédagogique en économétrie (séries temporelles, éco
 
 ## Fonctionnalités
 
-- 🧠 **RAG** : recherche hybride (vecteurs + BM25) avec reranking, cloisonnée par niveau (M1 / M2 / Commun).
+- 🧠 **RAG** : cours LaTeX découpés en chunks typés (slides, définitions, théorèmes, manuscrits), embeddings `bge-m3`, recherche hybride (vecteurs + plein texte français) dans PostgreSQL/pgvector avec reranking multilingue, cloisonnée par niveau (M1 / M2 / Commun).
 - 👁️ **Vision** : analyse d'images (plusieurs par message) par un modèle multimodal.
 - 🎓 **Quiz** et 💻 **Atelier Code** (Python / R) ancrés dans le cours.
 - 🔐 **Comptes** en base PostgreSQL (bcrypt), rôles, niveau, quota journalier.
@@ -24,16 +24,18 @@ ela-ai/
 │   ├── config.py           #   configuration (pydantic-settings, .env)
 │   ├── llm.py              #   fabrique de modèles (Cerebras / ILaaS / Groq, fallback, vision)
 │   ├── engine.py           #   moteur de session (ask / quiz / code)
-│   ├── prompts.py, guard.py, history.py
-│   ├── retrieval/          #   ressources partagées, retriever scopé par niveau
-│   ├── ingestion/          #   parseur LaTeX + pipeline `ela-ingest`
+│   ├── prompts.py, guard.py, history.py, mathfmt.py
+│   ├── retrieval/          #   embeddings, store (pgvector | chroma), reranker, retriever scopé par niveau
+│   ├── ingestion/          #   parseur LaTeX (texclean.py, latex.py) + pipeline incrémental `ela-ingest`
+│   ├── eval/               #   jeu de questions + `ela-eval` (métriques de retrieval)
 │   ├── db/                 #   moteur SQL partagé, comptes, threads, migrations Alembic (`ela-db`)
 │   └── cli/                #   `ela-users`, `ela-hash`
 ├── apps/chat/              # application Chainlit (app.py, data_layer.py)
 ├── apps/admin/             # backoffice Streamlit
 ├── tests/                  # tests unitaires + intégration PostgreSQL
 ├── .chainlit/, public/, chainlit.md   # configuration et assets Chainlit (racine)
-├── data/latex/             # cours .tex  (non versionné)   data/chroma_db/  base vectorielle
+├── eval/questions.yaml     # questions de référence (rapports dans eval/reports/)
+├── data/latex/             # cours .tex (non versionné) ; data/hf-cache, data/flashrank : modèles téléchargés
 ├── Caddyfile, docker-compose.yml, Dockerfile, apps/admin/Dockerfile
 └── .env.example            # modèle documenté de configuration
 ```
@@ -67,18 +69,39 @@ ela-users list
 
 ### Base de connaissances
 
-Déposez vos fichiers `.tex` dans `data/latex/{M1|M2|Commun}/{NomDuCours}/` puis :
+Déposez vos fichiers `.tex` dans `data/latex/{M1|M2|Commun}/{NomDuCours}/` (un fichier maître avec ses `\include{}` est résolu automatiquement) puis :
 
 ```bash
-ela-ingest --dry-run      # vérifie la structure et affiche le rapport
-ela-ingest                # calcule les embeddings et (re)construit data/chroma_db
+ela-ingest --dry-run                  # analyse les cours et affiche le rapport (chunks par cours et par type)
+ela-ingest --dry-run --dump chunks.jsonl   # idem + export de chaque chunk pour relecture
+ela-ingest                            # incrémental : ne vectorise que les chunks nouveaux ou modifiés
+ela-ingest --full                     # vide le store puis réingère tout
 ```
+
+Le parseur produit des chunks typés : une **slide** par `frame` (titre, contenu lisible, notes `\note{}`), un chunk par **définition / théorème / proposition…** rattaché à sa slide, et des paragraphes de **manuscrit** (HDR, articles) regroupés par section. Les manuscrits sont marqués `doc_kind=manuscript` et ne remontent qu'en complément des slides.
+
+Le premier lancement télécharge `BAAI/bge-m3` (~2,2 Go) dans `data/hf-cache/` ; comptez quelques minutes de vectorisation sur CPU pour ~1 500 chunks.
+
+**Store** : par défaut `RETRIEVAL_BACKEND=pgvector` — les chunks vont dans la table `rag_chunks` de `DATABASE_URL` (extension `vector`). Sur un PostgreSQL Windows sans pgvector, deux options :
+
+- installer pgvector (binaires communautaires pour Windows ou compilation, voir [pgvector — installation](https://github.com/pgvector/pgvector#installation)) puis, en superuser, `CREATE EXTENSION vector;` dans la base ELA ;
+- ou garder `RETRIEVAL_BACKEND=chroma` en local (`data/chroma_db/`, aucune extension requise) — même parseur, mêmes embeddings, même reranker ; seule la recherche plein texte est remplacée par BM25.
+
+Sur le serveur, l'image `pgvector/pgvector:pg15` du compose inclut l'extension.
 
 ### Lancer
 
 ```bash
 chainlit run apps/chat/app.py -w         # chat : http://localhost:8000
 cd apps/admin && streamlit run app.py    # backoffice : http://localhost:8501
+```
+
+### Évaluation du RAG
+
+```bash
+ela-eval retrieval --label before     # hit@5 / MRR du retriever sur eval/questions.yaml → eval/reports/
+ela-eval retrieval --label after      # même mesure après changement de configuration
+ela-eval compare eval/reports/<avant>.json eval/reports/<après>.json
 ```
 
 ### Qualité
@@ -91,17 +114,26 @@ pre-commit install                        # hooks ruff au commit
 
 ## Déploiement (Docker, serveur)
 
+Deux modes, selon que le serveur a déjà un reverse proxy ou non :
+
 ```bash
+# Serveur avec un Caddy (ou nginx) déjà en place — cas du VPS :
 docker compose up -d --build
+#   → app sur 127.0.0.1:8000, backoffice sur 127.0.0.1:8501 ; copier deploy/caddy-ela.snippet
+#     dans le Caddyfile existant (sous-domaine dédié ou chemin /ela) puis `caddy reload`.
+
+# Serveur dédié, sans reverse proxy :
+docker compose --profile standalone up -d --build
+#   → le service `caddy` d'ELA prend les ports 80/443 (HTTPS automatique via SITE_ADDRESS).
 ```
 
-Services : `caddy` (HTTPS automatique, ports 80/443), `app` (Chainlit), `admin` (Streamlit sous `/admin`, protégé par `ADMIN_BASIC_AUTH_*`), `db` (PostgreSQL 15 + pgvector). `SITE_ADDRESS` fixe l'adresse servie : un nom de domaine donne un certificat Let's Encrypt, une IP ou `localhost` un certificat auto-signé. Compose force `DATABASE_URL` vers le service `db` : le `.env` reste identique en local et sur le serveur.
+Services : `app` (Chainlit), `admin` (Streamlit, protégé par authentification basique dans Caddy), `db` (PostgreSQL 15 + pgvector), `caddy` (profil `standalone` seulement). Compose force `DATABASE_URL` vers le service `db` : le `.env` reste identique en local et sur le serveur.
 
-Premier démarrage : `docker compose exec app ela-db upgrade` puis `docker compose exec -it app ela-users create admin --role admin --level ALL`. Les modèles (embeddings, reranker) sont téléchargés au premier lancement dans `data/` (volume), donc une seule fois.
+Premier démarrage : `docker compose exec app ela-db upgrade`, `docker compose exec -it app ela-users create admin --role admin --level ALL`, puis `docker compose exec app ela-ingest` (les cours sont dans `./data/latex`, monté dans le conteneur). Les modèles (embeddings, reranker) sont téléchargés au premier lancement dans `data/` (volume), donc une seule fois.
 
 ## Configuration des modèles
 
-Aucune modification de code : tout se règle dans `.env` (voir `src/ela/config.py` et `src/ela/llm.py`).
+Aucune modification de code : tout se règle dans `.env` (voir `src/ela/config.py`, `.env.example`).
 
 ```ini
 LLM_PROVIDER=cerebras            # cerebras | ilaas | groq
@@ -109,7 +141,14 @@ LLM_MODEL_CHAT=gpt-oss-120b      # réponses, quiz, atelier code
 LLM_MODEL_VISION=qwen-3.8-27b    # utilisé automatiquement quand une image est jointe
 LLM_MODEL_FALLBACK=qwen-3.8-27b  # modèle de secours (`none` pour désactiver)
 LLM_REASONING_EFFORT=low         # gpt-oss : low|medium|high ; qwen : none|low|... ; omit = non envoyé
+
+EMBEDDING_PROVIDER=local         # local (sentence-transformers) | ilaas | openai (API compatible)
+EMBEDDING_MODEL=BAAI/bge-m3      # 1024 dims ; EMBEDDING_LOCAL_FALLBACK=true recharge le même modèle en local si l'API tombe
+RETRIEVAL_BACKEND=pgvector       # pgvector | chroma
+RERANK_PROVIDER=none             # none (ordre de fusion, meilleur mesuré) | flashrank (ms-marco-MiniLM-L-12-v2) | local (bge-reranker-v2-m3)
 ```
+
+Pour comparer deux configurations (par ex. les deux rerankers), lancez `ela-eval retrieval --label <nom>` avec chacune puis `ela-eval compare`.
 
 ## Stack
 
@@ -118,8 +157,8 @@ LLM_REASONING_EFFORT=low         # gpt-oss : low|medium|high ; qwen : none|low|.
 | Front chat | Chainlit 2.12 |
 | LLM | Cerebras (`gpt-oss-120b`, `qwen-3.8-27b`) — ILaaS / Groq en option |
 | Orchestration | LangChain 1.x |
-| Vector store | ChromaDB (pgvector prévu en phase 2) |
-| Embeddings / rerank | sentence-transformers, FlashRank (bge-m3 + reranker multilingue prévus en phase 2) |
+| Base de connaissances | PostgreSQL + pgvector (hybride vecteur + plein texte français, RRF) — ChromaDB + BM25 en repli |
+| Embeddings / rerank | `BAAI/bge-m3` (local ou API ILaaS) ; reranking optionnel (FlashRank, `BAAI/bge-reranker-v2-m3`) — désactivé par défaut, la fusion RRF suffit |
 | Base de données | PostgreSQL 15 + pgvector, SQLAlchemy (asyncpg / psycopg2), Alembic |
 | Backoffice | Streamlit (FastAPI + HTMX prévu en phase 5) |
 | Reverse proxy | Caddy 2 |

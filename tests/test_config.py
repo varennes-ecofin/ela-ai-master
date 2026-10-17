@@ -50,3 +50,26 @@ def test_find_env_file_walks_up(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_find_env_file_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("ELA_ENV_FILE", str(tmp_path / "custom.env"))
     assert find_env_file(tmp_path) == tmp_path / "custom.env"
+
+
+def test_retrieval_defaults_and_helpers():
+    s = Settings(_env_file=None)
+    assert s.retrieval_backend == "pgvector" and s.embedding_provider == "local"
+    assert s.embedding_model == "BAAI/bge-m3" and s.embedding_dim == 1024
+    assert s.rerank_provider == "none"
+    assert Settings(_env_file=None, rerank_provider="flashrank").rerank_model_name == "ms-marco-MultiBERT-L-12"
+    assert Settings(_env_file=None, rerank_provider="local").rerank_model_name == "BAAI/bge-reranker-v2-m3"
+    assert Settings(_env_file=None, rerank_model="custom/x").rerank_model_name == "custom/x"
+    with pytest.raises(ValueError):
+        s.embedding_endpoint()
+
+
+def test_embedding_endpoint_per_provider():
+    s = Settings(_env_file=None, embedding_provider="ilaas", ilaas_api_key="k1")
+    assert s.embedding_endpoint() == ("https://rag-api.ilaas.fr/v1", "k1")
+    s = Settings(_env_file=None, embedding_provider="ilaas", ilaas_api_key="k1", embedding_api_key="k2")
+    assert s.embedding_endpoint()[1] == "k2"
+    s = Settings(_env_file=None, embedding_provider="openai", embedding_base_url="https://e/v1", embedding_api_key="k")
+    assert s.embedding_endpoint() == ("https://e/v1", "k")
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, embedding_provider="openai").embedding_endpoint()

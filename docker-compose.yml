@@ -1,7 +1,19 @@
+# ============================================================
+# ELA AI — Docker Compose
+#
+# Deux modes de déploiement :
+#  - serveur avec un reverse proxy DÉJÀ en place (cas du VPS, où un Caddy
+#    sert déjà une autre application) : `docker compose up -d`
+#    → app et admin écoutent uniquement sur 127.0.0.1 (8000 / 8501) ;
+#      ajouter l'extrait deploy/caddy-ela.snippet au Caddyfile existant.
+#  - serveur dédié sans reverse proxy : `docker compose --profile standalone up -d`
+#    → le service `caddy` ci-dessous prend les ports 80/443 (HTTPS automatique).
+# ============================================================
 services:
-  # --- Reverse proxy HTTPS ---
+  # --- Reverse proxy HTTPS (profil "standalone" uniquement) ---
   caddy:
     image: caddy:2
+    profiles: ["standalone"]
     restart: unless-stopped
     ports:
       - "80:80"
@@ -42,8 +54,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    expose:
-      - "8000"
+    # Accessible depuis l'hôte seulement (reverse proxy externe) ; jamais exposé sur Internet
+    ports:
+      - "127.0.0.1:${ELA_APP_PORT:-8000}:8000"
     env_file:
       - .env
     environment:
@@ -66,8 +79,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    expose:
-      - "8501"
+    ports:
+      - "127.0.0.1:${ELA_ADMIN_PORT:-8501}:8501"
     env_file:
       - .env
     environment:

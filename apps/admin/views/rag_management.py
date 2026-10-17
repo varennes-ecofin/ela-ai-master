@@ -6,11 +6,10 @@ Allows the admin to:
 - Browse the latex/ directory tree.
 - Upload .tex files with level/course assignment.
 - Delete .tex files from the knowledge base.
-- Trigger a full ChromaDB rebuild (ingest.py) with atomic swap.
+- Run the ingestion (`ela-ingest`): dry run, incremental update or full rebuild.
 - View ingestion logs and statistics.
 """
 
-import shutil
 import subprocess
 import sys
 import time
@@ -34,7 +33,6 @@ else:
     BASE_DIR = _LOCAL_BASE
 
 LATEX_DIR = BASE_DIR / "data" / "latex"
-CHROMA_DIR = BASE_DIR / "data" / "chroma_db"
 # Ingestion runs as a module of the installed `ela` package (same as `ela-ingest`).
 # `-I` (isolated mode) keeps the current directory out of sys.path so a stale
 # `ela/` folder at the project root can never shadow the installed package.
@@ -98,13 +96,18 @@ def _count_tex_files() -> int:
     return sum(1 for _ in LATEX_DIR.rglob("*.tex"))
 
 
-def _get_chroma_stats() -> dict:
-    """Get basic stats about the current ChromaDB."""
-    stats = {"exists": CHROMA_DIR.exists(), "size_mb": 0.0, "file_count": 0}
-    if stats["exists"]:
-        files = [f for f in CHROMA_DIR.rglob("*") if f.is_file()]
-        stats["size_mb"] = round(sum(f.stat().st_size for f in files) / (1024 * 1024), 1)
-        stats["file_count"] = len(files)
+def _get_store_stats() -> dict:
+    """Backend and number of chunks of the knowledge base (``RETRIEVAL_BACKEND``)."""
+    stats = {"backend": "?", "count": None, "error": ""}
+    try:
+        from ela.config import get_settings
+        from ela.retrieval.store import build_store
+
+        settings = get_settings()
+        stats["backend"] = settings.retrieval_backend
+        stats["count"] = build_store(settings).count()
+    except Exception as exc:  # store unreachable (no DB, no pgvector, no chroma dir...)
+        stats["error"] = f"{exc.__class__.__name__}: {exc}"
     return stats
 
 
@@ -128,32 +131,21 @@ def _ensure_directory(path: Path):
     path.mkdir(parents=True, exist_ok=True)
 
 
-def _run_ingestion(dry_run: bool = False) -> tuple[bool, str, float]:
-    """Execute ingest.py as a subprocess with optional atomic swap.
-
-    Strategy (from GUIDE Phase 5):
-    1. Ingest into chroma_db_new/
-    2. Atomic swap: mv chroma_db → chroma_db_old, mv chroma_db_new → chroma_db
-    3. Cleanup: rm chroma_db_old after validation.
+def _run_ingestion(mode: str = "incremental") -> tuple[bool, str, float]:
+    """Run ``ela-ingest`` as a subprocess.
 
     Args:
-        dry_run: If True, run --dry-run (parse only, no embeddings).
+        mode: ``dry_run`` (parse only), ``incremental`` (default: only new or
+            changed chunks are embedded) or ``full`` (store cleared then rebuilt).
 
     Returns:
-        Tuple of (success: bool, log_output: str, duration_seconds: float).
+        Tuple of (success, log_output, duration_seconds).
     """
-    new_db = BASE_DIR / "data" / "chroma_db_new"
-    old_db = BASE_DIR / "data" / "chroma_db_old"
-
-    cmd = [
-        *INGEST_CMD,
-        "--source-dir",
-        str(LATEX_DIR),
-        "--db-path",
-        str(new_db) if not dry_run else str(CHROMA_DIR),
-    ]
-    if dry_run:
+    cmd = [*INGEST_CMD, "--source-dir", str(LATEX_DIR)]
+    if mode == "dry_run":
         cmd.append("--dry-run")
+    elif mode == "full":
+        cmd.append("--full")
 
     start = time.time()
     try:
@@ -163,54 +155,18 @@ def _run_ingestion(dry_run: bool = False) -> tuple[bool, str, float]:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=600,  # 10 min max
+            timeout=3600,  # the first full run downloads the models and embeds everything
             cwd=str(BASE_DIR),
         )
         duration = time.time() - start
         log = result.stdout + ("\n" + result.stderr if result.stderr else "")
-
         if result.returncode != 0:
             return False, f"❌ Erreur (code {result.returncode}):\n{log}", duration
-
-        # Dry-run: no swap needed
-        if dry_run:
-            return True, log, duration
-
-        # Atomic swap
-        if not new_db.exists():
-            return False, f"❌ chroma_db_new/ non créé par ingest.py.\n{log}", duration
-
-        try:
-            # Remove leftover old_db if exists
-            if old_db.exists():
-                shutil.rmtree(old_db)
-
-            # Swap: current → old, new → current
-            if CHROMA_DIR.exists():
-                CHROMA_DIR.rename(old_db)
-            new_db.rename(CHROMA_DIR)
-
-            # Cleanup old
-            if old_db.exists():
-                shutil.rmtree(old_db)
-
-            log += "\n\n✅ Swap atomique réussi : nouvelle base active."
-        except Exception as swap_err:
-            log += f"\n\n❌ Erreur lors du swap : {swap_err}"
-            # Try to rollback
-            if old_db.exists() and not CHROMA_DIR.exists():
-                old_db.rename(CHROMA_DIR)
-                log += "\n⚠️ Rollback effectué (ancienne base restaurée)."
-            return False, log, duration
-
         return True, log, duration
-
     except subprocess.TimeoutExpired:
-        duration = time.time() - start
-        return False, "❌ Timeout : l'ingestion a dépassé 10 minutes.", duration
+        return False, "❌ Timeout : l'ingestion a dépassé 60 minutes.", time.time() - start
     except Exception as e:
-        duration = time.time() - start
-        return False, f"❌ Exception : {e}", duration
+        return False, f"❌ Exception : {e}", time.time() - start
 
 
 # ---------------------------------------------------------------------------
@@ -377,64 +333,46 @@ def _render_upload_section():
         if uploaded_count:
             st.success(f"✅ {uploaded_count} fichier(s) uploadé(s) dans `latex/{level}/{course_name}/`")
             st.info(
-                "💡 N'oubliez pas de **reconstruire la base vectorielle** "
+                "💡 Lancez une **mise à jour incrémentale** (onglet Mise à jour) "
                 "pour que ces fichiers soient pris en compte par ELA."
             )
             st.rerun()
 
 
 def _render_rebuild_section():
-    """Render the ChromaDB rebuild controls."""
-    st.markdown("### 🔄 Reconstruction de la base vectorielle")
+    """Render the ingestion controls (dry run / incremental / full)."""
+    st.markdown("### 🔄 Mise à jour de la base de connaissances")
 
-    # Current stats
     col1, col2, col3 = st.columns(3)
     col1.metric("Fichiers .tex", _count_tex_files())
-
-    chroma_stats = _get_chroma_stats()
-    col2.metric(
-        "Base ChromaDB",
-        f"{chroma_stats['size_mb']} Mo" if chroma_stats["exists"] else "Absente",
-    )
-    col3.metric(
-        "Statut",
-        "✅ Active" if chroma_stats["exists"] else "❌ Absente",
-    )
+    stats = _get_store_stats()
+    col2.metric("Chunks indexés", stats["count"] if stats["count"] is not None else "—")
+    col3.metric("Backend", stats["backend"])
+    if stats["error"]:
+        st.warning(f"Store inaccessible : {stats['error']}")
 
     st.divider()
-
     st.caption(
-        "**Stratégie** : L'ingestion crée une nouvelle base (`chroma_db_new/`), "
-        "puis effectue un swap atomique. Les sessions ELA existantes ne sont pas "
-        "interrompues ; seules les nouvelles sessions chargeront la base mise à jour."
+        "**Mise à jour incrémentale** : seuls les chunks nouveaux ou modifiés sont vectorisés, "
+        "les chunks disparus sont supprimés ; les sessions en cours basculent sur la base mise à jour "
+        "à leur prochaine question. **Reconstruction complète** : vide le store puis réingère tout."
     )
 
-    col_dry, col_full = st.columns(2)
-
-    # Dry run button
-    if col_dry.button(
-        "🔍 Dry Run (vérifier sans embeddings)",
-        use_container_width=True,
-        help="Parse les fichiers et affiche le rapport sans générer les vecteurs.",
-    ):
+    col_dry, col_inc, col_full = st.columns(3)
+    if col_dry.button("🔍 Dry run", use_container_width=True, help="Analyse les fichiers et affiche le rapport."):
         st.session_state["rebuild_mode"] = "dry_run"
-
-    # Full rebuild button
-    if col_full.button(
-        "🚀 Reconstruire la base",
+    if col_inc.button(
+        "⚡ Mise à jour incrémentale",
         use_container_width=True,
         type="primary",
-        help="Relance l'ingestion complète avec embeddings et swap atomique.",
+        help="Vectorise uniquement ce qui a changé.",
     ):
+        st.session_state["rebuild_mode"] = "incremental"
+    if col_full.button("🚀 Reconstruction complète", use_container_width=True, help="Vide le store et réingère tout."):
         st.session_state["rebuild_mode"] = "confirm"
 
-    # Confirmation for full rebuild
     if st.session_state.get("rebuild_mode") == "confirm":
-        st.warning(
-            "⚠️ Cette opération va **recalculer tous les embeddings** et "
-            "remplacer la base vectorielle actuelle. "
-            "Cela peut prendre plusieurs minutes."
-        )
+        st.warning("⚠️ Cette opération va **recalculer tous les embeddings**. Cela peut prendre plusieurs minutes.")
         col_y, col_n = st.columns(2)
         if col_y.button("✅ Confirmer", key="confirm_rebuild"):
             st.session_state["rebuild_mode"] = "full"
@@ -443,26 +381,21 @@ def _render_rebuild_section():
             del st.session_state["rebuild_mode"]
             st.rerun()
 
-    # Execute rebuild
     mode = st.session_state.get("rebuild_mode")
-    if mode in ("dry_run", "full"):
-        is_dry = mode == "dry_run"
-        label = "Dry run" if is_dry else "Ingestion complète"
-
+    if mode in ("dry_run", "incremental", "full"):
+        label = {"dry_run": "Dry run", "incremental": "Mise à jour incrémentale", "full": "Reconstruction complète"}[
+            mode
+        ]
         with st.spinner(f"⏳ {label} en cours... Patientez."):
-            success, log, duration = _run_ingestion(dry_run=is_dry)
+            success, log, duration = _run_ingestion(mode)
 
-        # Display results
         duration_str = f"{duration:.1f}s"
         if success:
             st.success(f"✅ {label} terminé en {duration_str}.")
         else:
             st.error(f"❌ {label} échoué après {duration_str}.")
-
         with st.expander("📋 Log d'ingestion", expanded=True):
             st.code(log, language="text")
-
-        # Store in session for history
         st.session_state.setdefault("ingestion_history", []).append(
             {
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -471,8 +404,6 @@ def _render_rebuild_section():
                 "duration": duration_str,
             }
         )
-
-        # Reset mode
         if "rebuild_mode" in st.session_state:
             del st.session_state["rebuild_mode"]
 
@@ -497,7 +428,7 @@ def _render_history_section():
 def show_rag_management_page():
     """Render the full RAG management page."""
     st.markdown("## 📚 Gestion de la Base de Connaissances (RAG)")
-    st.caption(f"Dossier source : `{LATEX_DIR}` · Base vectorielle : `{CHROMA_DIR}`")
+    st.caption(f"Dossier source : `{LATEX_DIR}`")
     st.divider()
 
     # Tabs for cleaner UX
@@ -505,7 +436,7 @@ def show_rag_management_page():
         [
             "📂 Arborescence",
             "⬆️ Upload",
-            "🔄 Reconstruction",
+            "🔄 Mise à jour",
         ]
     )
 

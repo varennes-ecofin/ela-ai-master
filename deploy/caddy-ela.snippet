@@ -1,0 +1,43 @@
+# ============================================================
+# ELA AI — extrait à ajouter au Caddyfile d'un Caddy DÉJÀ en place sur le serveur
+# (cas du VPS où un autre site est servi). Deux variantes, en choisir UNE.
+# Les ports 8000 / 8501 sont ceux publiés sur 127.0.0.1 par docker-compose.yml
+# (variables ELA_APP_PORT / ELA_ADMIN_PORT).
+#
+# Backoffice : le hash bcrypt se génère avec `ela-hash --caddy` (ou
+# `docker compose exec app ela-hash --caddy`).
+# ============================================================
+
+# --- Variante A : sous-domaine dédié (recommandé) ---------------------------
+ela.mondomaine.fr {
+	encode zstd gzip
+
+	@admin path /admin /admin/*
+	handle @admin {
+		basic_auth {
+			admin $2b$12$REMPLACER_PAR_LE_HASH
+		}
+		reverse_proxy 127.0.0.1:8501
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+}
+
+# --- Variante B : même domaine que l'autre application, sous le chemin /ela --
+# (à insérer DANS le bloc de site existant, avant son `handle` final)
+#
+#   handle_path /ela/admin* {
+#       basic_auth {
+#           admin $2b$12$REMPLACER_PAR_LE_HASH
+#       }
+#       reverse_proxy 127.0.0.1:8501
+#   }
+#   handle_path /ela* {
+#       reverse_proxy 127.0.0.1:8000
+#   }
+#
+# Pour la variante B, Chainlit doit connaître son préfixe : ajouter
+# CHAINLIT_ROOT_PATH=/ela dans .env, et lancer Streamlit avec
+# --server.baseUrlPath ela/admin (service admin de docker-compose.yml).

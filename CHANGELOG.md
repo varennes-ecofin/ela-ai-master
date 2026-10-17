@@ -3,6 +3,31 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [Unreleased] — Phase 2 : retrieval 2.0
+
+### Ajouté
+- **Parseur LaTeX v2** (`ela.ingestion.texclean`, `ela.ingestion.latex`) : suppression correcte des commentaires (les frames commentées ne sont plus ingérées), expansion des macros sans argument du cours, chunks typés — `slide`, `definition`/`theorem`/`proposition`/`lemma`/`corollary`/`example`/`remark`/`model`/`assumption` (rattachés à leur slide par `parent_id`) et `text` (manuscrits découpés par chapitre/section/paragraphes) — avec `doc_kind` (`slides`/`manuscript`), notes `\note{}` de l'enseignant, tableaux, figures, colonnes, chapitres beamer personnalisés ; identifiants stables par hash de contenu.
+- **Embeddings** `BAAI/bge-m3` (`ela.retrieval.embeddings`) : local (sentence-transformers) ou API OpenAI-compatible (ILaaS), repli local automatique sur le même modèle.
+- **Store pgvector** (`ela.retrieval.store.PgVectorStore`, migration `0002_rag_chunks`) : table `rag_chunks` avec index HNSW et `tsvector` français, recherche hybride vecteur + plein texte fusionnée par RRF en une requête SQL ; `ChromaStore` (Chroma + BM25) derrière la même interface.
+- **Ingestion incrémentale** : `ela-ingest` ne vectorise que les chunks nouveaux ou modifiés et supprime ceux qui ont disparu ; `--full`, `--dump chunks.jsonl` ; backoffice : dry run / mise à jour incrémentale / reconstruction complète.
+- **Reranker** optionnel (`ela.retrieval.rerank`) : FlashRank ou CrossEncoder `BAAI/bge-reranker-v2-m3`. **Désactivé par défaut** (`RERANK_PROVIDER=none`) : mesuré le 17/10 sur 65 questions (Chroma + bge-m3), l'ordre de fusion seul donne any-hit@5 = 0,94 / MRR = 0,74 / 0,25 s, contre 0,88 / 0,57 avec `ms-marco-MiniLM-L-12-v2` et 0,59 / 0,29 avec `ms-marco-MultiBERT-L-12` ; le rappel du pool de 40 candidats est de 1,00. Baseline Phase 1 : 0,63 / 0,43.
+- **Retriever** : slides recherchées d'abord, manuscrits en quota (`RETRIEVAL_MANUSCRIPT_K`) et plafonnés dans le top-n final (`RETRIEVAL_MANUSCRIPT_MAX`), union des deux branches (vecteur, plein texte) comme pool de candidats, expansion des définitions/théorèmes vers leur slide parente avec re-remplissage après dédoublonnage, scores de fusion et de reranking dans les métadonnées.
+- `ela-eval retrieval` mesure aussi le **rappel du pool** (slide attendue parmi les candidats avant reranking) pour distinguer un défaut de recherche d'un défaut de reranking.
+- `ela.mathfmt.normalize_math` : les réponses en `\(…\)`, `\[…\]` ou `equation`/`align` nus sont réécrites en `$…$` / `$$…$$` pour KaTeX (le LaTeX brut n'apparaît plus dans le chat).
+- Tests : parseur (fixtures beamer/manuscrit), stores (pgvector en intégration, Chroma), retriever, pipeline incrémental, normalisation LaTeX, configuration.
+- `eval/questions.yaml` : jeu d'évaluation v1 — 71 questions (UTS 17, MTS 17, HFE 15, SA 9, NCE 7, cloisonnement 1, hors corpus 2, hors domaine 3) avec slides attendues et points de réponse, rédigées à partir des `.tex` ; chaque slide attendue a été vérifiée contre le corpus ingéré. **À valider par l'enseignant.**
+- `ela-eval retrieval` : mesure hit@k, any-hit@k, MRR et latence du retriever par niveau et par cours, rapport JSON dans `eval/reports/` ; `ela-eval compare` pour comparer deux rapports (avant/après).
+- `docker-compose.yml` : le Caddy d'ELA devient un profil optionnel (`--profile standalone`) ; par défaut app/admin n'écoutent que sur 127.0.0.1 pour être servis par un reverse proxy existant (`deploy/caddy-ela.snippet`).
+
+### Modifié
+- Configuration : `EMBEDDING_PROVIDER/MODEL/DIM/BASE_URL/API_KEY/LOCAL_FALLBACK`, `RETRIEVAL_BACKEND`, `RETRIEVAL_MANUSCRIPT_K`, `RETRIEVAL_LEXICAL_WEIGHT`, `RETRIEVAL_RRF_K`, `RETRIEVAL_FTS_CONFIG`, `RETRIEVAL_EXPAND_ELEMENTS`, `RERANK_PROVIDER/MODEL/MAX_LENGTH`, `CHUNK_TARGET_CHARS`, `CHUNK_MAX_CHARS`, `INGEST_INCLUDE_NOTES` remplacent `EMBEDDING_MODEL_NAME`, `RETRIEVAL_BM25_WEIGHT`, `RERANK_MODEL_NAME`, `CHUNK_SIZE`, `CHUNK_OVERLAP`.
+- Le contexte RAG transmis au modèle conserve les sauts de ligne (listes, formules en bloc) et indique l'emplacement de chaque extrait (chapitre › section › slide).
+- Prompt : consigne explicite sur les délimiteurs LaTeX et la reprise des notations du cours.
+- Dépendances : `langchain-community`, `langchain-classic`, `langchain-chroma`, `langchain-text-splitters` retirées (Chroma utilisé via `chromadb` directement).
+
+### Supprimé
+- Swap atomique de dossiers Chroma dans le backoffice (remplacé par l'ingestion incrémentale, visible sans redémarrage).
+
 ## [2.0.0a2] — 2026-10-13 — Phase 1b : migrations, montée de versions, Docker
 
 ### Ajouté

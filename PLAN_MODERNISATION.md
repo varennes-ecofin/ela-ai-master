@@ -2,7 +2,7 @@
 
 > **Version** : 1.3 — 2026-10-13
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phase 0 validée · Phase 1a validée (13/10) · Phase 1b livrée (en test) · Phase 2 à suivre
+> **Statut** : Phases 0 et 1 validées (13/10) · Phase 2 en cours (jeu d'évaluation livré, mesure « avant » à faire)
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -193,13 +193,15 @@ Critères d'acceptation : `uv run pytest` vert ; `ruff check` vert ; démarrage 
 **Objectif** : une recherche qui trouve réellement le contenu des slides, mesurée.
 
 Tâches :
-1. **Jeu d'évaluation** : 40–60 questions de référence réparties par niveau/cours (UTS, MTS, HFE, SA, Research), chacune avec les slides attendues. Claude génère une première version à partir des `.tex`, Gilles valide/corrige. Script `ela-eval` : hit@5, MRR, et juge LLM de fidélité. **Mesure « avant »** sur le système actuel.
-2. **Embeddings** `bge-m3` (ILaaS en priorité, local en repli), 1024 dims, chunks jusqu'à 8k tokens — fin de la troncature à 128 tokens.
-3. **Reranker** multilingue `bge-reranker-v2-m3` (CPU, ~1 s pour 20 candidats).
-4. **Store** pgvector : table `chunks(id, course_id, level, chapter, section, slide_title, kind, content, content_hash, embedding vector(1024), tsv tsvector)` ; recherche hybride = RRF(cosinus, `ts_rank` config `french`) en une requête SQL ; filtres niveau/cours. (Si Chroma conservé : mêmes embeddings/reranker, tokeniseur BM25 corrigé.)
-5. **Ingestion** : parseur LaTeX robuste (`pylatexenc`/`TexSoup`) ; unités typées `definition`, `theorem`, `proposition`, `example`, `remark`, `frame` ; conservation du LaTeX mathématique brut ; en-tête contextuel (cours › chapitre › section › slide) ; **incrémental** par `content_hash` (seuls les fichiers modifiés sont ré-encodés) ; exécution en job asynchrone avec journal en base ; CLI `ela-ingest [--course …] [--dry-run]`.
-6. Sous-questions : décomposition des questions composées en plusieurs recherches (sera repris par l'agent en phase 3).
-7. **Mesure « après »**, comparaison dans le rapport d'évaluation.
+1. ✅ **Jeu d'évaluation** : 71 questions (`eval/questions.yaml`), `ela-eval retrieval` / `ela-eval compare`. ✅ **Mesure « avant »** (14/10) : any-hit@5 = 0,63, MRR = 0,43 ; M1 ≈ 0,88, M2 entre 0,29 et 0,40 — échecs M2 dus aux blocs de texte du manuscrit HDR qui saturent le top-5, échecs M1 = slides voisines (troncature 128 tokens). Juge LLM de fidélité à venir.
+2. ✅ **Embeddings** `bge-m3` : `EMBEDDING_PROVIDER=local|ilaas|openai` (`ela.retrieval.embeddings`), 1024 dims, repli local automatique sur le même modèle si l'API tombe.
+3. ✅ **Reranker** : mesuré inutile avec bge-m3 — désactivé par défaut (`RERANK_PROVIDER=none`) ; FlashRank MiniLM/MultiBERT dégradent (0,88 / 0,59 contre 0,94 sans), `bge-reranker-v2-m3` reste disponible (`local`) et non mesuré.
+4. ✅ **Store** pgvector : table `rag_chunks` (migration `0002`, HNSW cosinus + `tsvector` français GIN), recherche hybride RRF en une requête SQL (`ela.retrieval.store.PgVectorStore`) ; Chroma + BM25 conservé derrière la même interface (`RETRIEVAL_BACKEND=chroma`, utile sur un PC Windows sans pgvector).
+5. ✅ **Ingestion** : parseur maison (`texclean.py` + `latex.py`, sans dépendance LaTeX) — commentaires, macros du cours, environnements typés (définition, théorème, proposition, lemme, corollaire, exemple, remarque, modèle, hypothèse), colonnes/overlays beamer, tableaux, figures, notes `\note{}`, manuscrits découpés par chapitre/section/paragraphes ; en-tête contextuel ; **incrémental par `content_hash`** (`ela-ingest`, `--full`, `--dump`) ; backoffice : dry run / incrémental / complet. ⏳ Job asynchrone avec journal en base → phase 5 (backoffice FastAPI).
+6. ✅ **Retriever** : slides d'abord + quota de manuscrit (`RETRIEVAL_MANUSCRIPT_K`), expansion définition → slide parente, scores exposés dans les métadonnées (panneau sources en phase 3).
+7. ✅ Rendu LaTeX dans le chat : normalisation des délimiteurs (`ela.mathfmt`) + consigne de prompt.
+8. ✅ **Mesure « après »** (17/10, Chroma + bge-m3, k=5, 65 questions) : any-hit@5 **0,94** (avant 0,63), hit@5 0,90 (0,60), MRR **0,74** (0,43), latence 0,25 s (1,55 s) ; par cours any-hit : UTS 0,94, MTS 0,94, HFE 1,00, SA 0,89, NCE 0,86. Rappel du pool (40 candidats) = 1,00 ; les 4 échecs restants (UTS-16, MTS-02, SA-06, NCE-05) sont aux rangs 8–19 du pool. Objectif ≥ 0,85 atteint. À refaire en pgvector (plein texte français) sur le VPS.
+9. Sous-questions : décomposition des questions composées → phase 3 (agent).
 
 Critères d'acceptation : hit@5 et MRR en hausse significative sur le jeu de test (objectif indicatif : hit@5 ≥ 0,85) ; ajout d'un fichier `.tex` ⇒ seuls ses chunks sont ré-encodés, visible en < 1 min sur le VPS via ILaaS ; démonstration « ajout d'un cours en direct » possible.
 
@@ -274,6 +276,7 @@ Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** 
 | Appels d'outils instables sur petits modèles | strict mode (schémas JSON), `ToolCallLimit`, validation Pydantic, fallback `gpt-oss-120b` |
 | Régression qualité non détectée | jeu d'évaluation exécuté à chaque phase |
 | Exécution de code (si retenue) | conteneur jetable, sans réseau, limites CPU/RAM/temps, liste blanche de paquets |
+| VPS : un Caddy sert déjà une autre application (ports 80/443 pris) | le `caddy` d'ELA est un profil optionnel (`--profile standalone`) ; par défaut app/admin n'écoutent que sur 127.0.0.1 et le Caddy existant les sert via `deploy/caddy-ela.snippet` (sous-domaine ou chemin `/ela`) |
 
 ---
 

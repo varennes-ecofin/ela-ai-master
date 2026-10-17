@@ -29,6 +29,8 @@ _PREFIXES = (
     "RETRIEVAL_",
     "RERANK_",
     "WARMUP_",
+    "CHUNK_",
+    "INGEST_",
     "LOG_",
 )
 

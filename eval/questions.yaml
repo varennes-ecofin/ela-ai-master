@@ -1,0 +1,914 @@
+# ============================================================
+# ELA AI — jeu d'évaluation du RAG (v1, 2026-10-13)
+#
+# Chaque entrée décrit une question d'étudiant, les slides qui DOIVENT
+# remonter dans le retrieval (expected_sources) et les points qu'une bonne
+# réponse doit contenir (answer_points, utilisés par le juge LLM).
+#
+# Conventions :
+#   level            : niveau de l'utilisateur simulé (M1 / M2) — détermine le filtre
+#   course           : dossier du cours dans data/latex/{level}/
+#   type             : definition | formula | procedure | reasoning | multi-hop
+#                      | out-of-domain (refus attendu) | not-in-corpus (en domaine mais absent)
+#   expected_sources : liste de {source, slide_title | section} ; un chunk récupéré est un
+#                      "hit" si source correspond ET si slide_title (ou section) est contenu
+#                      (insensible à la casse) dans ses métadonnées. `source` est le fichier
+#                      maître (les \include sont résolus à l'ingestion).
+#   difficulty       : 1 (lecture directe) à 3 (raisonnement / plusieurs slides)
+#
+# Rédigé par Claude à partir des .tex, À VALIDER PAR L'ENSEIGNANT.
+# ============================================================
+version: 1
+questions:
+
+# ---------------------------------------------------------------- M1 / UTS
+- id: UTS-01
+  level: M1
+  course: Univariate_Time_Series
+  type: definition
+  difficulty: 1
+  question: "Quelle est la définition de la stationnarité faible d'un processus $X_t$ ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Stationnarité faible"}
+  answer_points:
+    - "Espérance constante et finie : E(X_t) = mu pour tout t"
+    - "Autocovariance ne dépendant que de l'écart h : Cov(X_t, X_{t+h}) = gamma(h) < infini"
+    - "Donc variance constante et finie (cas h = 0)"
+    - "Définition par les deux premiers moments ; équivalente à la stationnarité stricte dans le cas gaussien"
+
+- id: UTS-02
+  level: M1
+  course: Univariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Pourquoi dit-on que $X_t = \\sum_{j\\ge0} \\phi_1^j \\varepsilon_{t-j}$ est l'unique solution stationnaire d'un AR(1) ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "AR$(1)$ et solution stationnaire"}
+  answer_points:
+    - "Substitutions récursives : X_t = somme_{j=0}^{l} phi^j eps_{t-j} + phi^{l+1} X_{t-l-1}"
+    - "La série converge et le terme résiduel tend vers 0 si |phi_1| < 1"
+    - "Lien avec l'inversibilité de (1 - phi_1 L)"
+
+- id: UTS-03
+  level: M1
+  course: Univariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Comment obtient-on les conditions de stationnarité d'un AR(2) à partir de son polynôme caractéristique ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Conditions de stationnarité : AR$(2)$"}
+  answer_points:
+    - "Racines de 1 - phi_1 z - phi_2 z^2 = 0 ; expressions lambda_1^{-1}, lambda_2^{-1} = (phi_1 ± sqrt(phi_1^2 + 4 phi_2)) / (2 phi_2)"
+    - "Racines réelles ou complexes selon le signe de phi_1^2 + 4 phi_2"
+    - "phi_1 = lambda_1 + lambda_2 et phi_2 = - lambda_1 lambda_2 ; stationnarité si |z| > 1 (racines hors du cercle unité)"
+
+- id: UTS-04
+  level: M1
+  course: Univariate_Time_Series
+  type: definition
+  difficulty: 1
+  question: "Comment se comportent l'ACF et la PACF d'un AR(p), d'un MA(q) et d'un ARMA(p,q) ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Comportement des ACF et PACF"}
+  answer_points:
+    - "MA(q) inversible : ACF nulle au-delà de q, PACF décroît vers 0"
+    - "AR(p) stationnaire : ACF décroît vers 0, PACF nulle au-delà de p"
+    - "ARMA(p,q) : ACF et PACF toutes deux non nulles mais décroissantes vers 0"
+
+- id: UTS-05
+  level: M1
+  course: Univariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Quel est le meilleur prédicteur linéaire de $X_{n+1}$ pour un AR(1) et quelle est son erreur quadratique ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Prédictions d'un AR$(1)$ et Yule-Walker"}
+  answer_points:
+    - "Système Gamma_n alpha_n = gamma_n(1) ; solution évidente alpha_n = (phi_1, 0, ..., 0)'"
+    - "P_n(X_{n+1}) = phi_1 X_n"
+    - "Erreur de prévision sigma^2 = gamma(0)(1 - alpha_n' rho_n(1)) = sigma_eps^2"
+
+- id: UTS-06
+  level: M1
+  course: Univariate_Time_Series
+  type: procedure
+  difficulty: 3
+  question: "Expliquez l'algorithme de Durbin-Levinson pour calculer les prédictions par récursion."
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Prédictions par récursion : Durbin-Levinson"}
+  answer_points:
+    - "Motivation : résoudre Gamma_n alpha_n = gamma_n est numériquement lourd pour n grand"
+    - "Récursion sur phi_{n,n} = (gamma(n) - somme phi_{n-1,j} gamma(n-j)) / sigma^2_{eps,n-1}"
+    - "Mise à jour des phi_{n,j} à partir des phi_{n-1,j} et de phi_{n,n} ; sigma^2_{eps,n} = sigma^2_{eps,n-1}(1 - phi_{n,n}^2)"
+    - "Initialisation phi_{1,1} = gamma(1)/gamma(0), sigma^2_{eps,0} = gamma(0)"
+
+- id: UTS-07
+  level: M1
+  course: Univariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Quelle différence entre le critère AIC et le critère AICc, et lequel surestime l'ordre p en échantillon fini ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Critère AIC versus AICc"}
+  answer_points:
+    - "AIC = -2 ln L + 2(p+q+1) ; AICc est la version corrigée, asymptotiquement équivalente"
+    - "En échantillon fini l'AIC surestime p (overfitting) ; si le vrai p est grand l'AICc tend à le sous-estimer"
+    - "Les deux combinent qualité d'ajustement (vraisemblance) et pénalité (nombre de paramètres)"
+
+- id: UTS-08
+  level: M1
+  course: Univariate_Time_Series
+  type: formula
+  difficulty: 1
+  question: "Quelles sont les statistiques de Box-Pierce et de Ljung-Box et quelle est leur loi sous H0 ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Tests de Ljung-Box et de Box-Pierce"}
+  answer_points:
+    - "Q_BP = n somme_{j=1}^h rho_hat(j)^2"
+    - "Q_LB = n(n+2) somme_{j=1}^h rho_hat(j)^2 / (n-j), raffinement de Q"
+    - "Sous H0 (rho_1 = ... = rho_h = 0) : chi2(h - p - q) sur les résidus d'un ARMA, chi2(h) sur les observations"
+
+- id: UTS-09
+  level: M1
+  course: Univariate_Time_Series
+  type: procedure
+  difficulty: 2
+  question: "Quels sont les trois modèles du test de Dickey-Fuller et pourquoi les distributions des statistiques sont-elles non standard ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Le test de Dickey-Fuller : cas général"}
+  answer_points:
+    - "M1 : Delta X_t = mu + delta t + phi X_{t-1} + eps (constante et tendance)"
+    - "M2 : constante seule ; M3 : marche aléatoire pure sans constante ni tendance"
+    - "Sous H0 il y a une racine unitaire : les distributions de phi_hat et des t-ratios tau sont non standard"
+
+- id: UTS-10
+  level: M1
+  course: Univariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Comment Dickey et Fuller obtiennent-ils les valeurs critiques des statistiques F de leurs tests joints ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Les valeurs critiques de Dickey-Fuller"}
+  answer_points:
+    - "Distributions limites non standard : pas de valeurs critiques analytiques"
+    - "Valeurs critiques tabulées (simulées) pour F_i = ((SSR_c - SSR_nc)/r) / (SSR_nc/(n-k))"
+    - "Tables par taille d'échantillon et seuil (1 %, 5 %, 10 %), par exemple F_2 à 5 % environ 6.25 pour T infini"
+
+- id: UTS-11
+  level: M1
+  course: Univariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Qu'est-ce qu'une régression factice (spurious regression) ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Le concept de régression factice"}
+  answer_points:
+    - "Régression Y_t = beta X_t + eps entre deux marches aléatoires indépendantes (beta = 0)"
+    - "L'estimateur OLS n'est pas consistant : beta_hat converge vers une variable aléatoire non dégénérée"
+    - "On ne peut pas révéler l'absence de relation : relation apparente factice"
+
+- id: UTS-12
+  level: M1
+  course: Univariate_Time_Series
+  type: formula
+  difficulty: 3
+  question: "Pour un bruit blanc fractionnaire, à partir de quelle valeur du paramètre $\\delta$ le processus devient-il non stationnaire, et pourquoi ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Bruit blanc fractionnaire et non-station"}
+  answer_points:
+    - "Variance finie si delta < 1/2 (stationnaire), infinie si delta >= 1/2 (non stationnaire)"
+    - "Argument par la somme des coefficients MA(infini) ~ j^{2(delta-1)}"
+    - "Forme exacte : V(X_t) = sigma_eps^2 Gamma(1 - 2 delta) / Gamma(1 - delta)^2"
+
+- id: UTS-13
+  level: M1
+  course: Univariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Pourquoi une marche aléatoire est-elle non stationnaire et en quoi est-ce lié à la notion de racine unitaire ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Tendance stochastique et racine unitaire"}
+  answer_points:
+    - "Avec rho = 1, X_t = somme des eps : V(X_t) = t sigma^2 dépend de t"
+    - "rho = 1 place la racine du polynôme de retard sur le cercle unité"
+    - "Espérance conditionnelle = X_{t-1} : martingale à tendance stochastique"
+
+- id: UTS-14
+  level: M1
+  course: Univariate_Time_Series
+  type: formula
+  difficulty: 1
+  question: "Quelle est la statistique du test de Jarque-Bera et sa loi limite ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Test de Jarque-Bera"}
+  answer_points:
+    - "S_JB = (n/6) S_k + (n/24)(K_u - 3)^2 avec skewness S_k et kurtosis K_u"
+    - "Loi limite chi2(2) ; rejet de la normalité si S_JB >= quantile chi2_{1-alpha}(2)"
+
+- id: UTS-15
+  level: M1
+  course: Univariate_Time_Series
+  type: definition
+  difficulty: 2
+  question: "Qu'énonce le théorème de Donsker (théorème central limite fonctionnel) ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Théorème central limite fonctionnel"}
+  answer_points:
+    - "Pour eps_t iid (0, sigma^2 < infini), la fonction aléatoire W_n converge en loi vers un processus de Wiener W"
+    - "Convergence fonctionnelle, plus forte que la convergence point par point W_n(r) -> W(r)"
+
+- id: UTS-16
+  level: M1
+  course: Univariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Pourquoi le modèle MA(1) doit-il être inversible pour être identifié ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Inversibilité des MA$(1)$ : intuition"}
+    - {source: UTS.tex, slide_title: "Identification des MA$(1)$"}
+  answer_points:
+    - "X_t = (1 + theta L) eps_t se réécrit (1 + theta L)^{-1} X_t = eps_t, ce qui exige l'inversibilité de (1 + theta L)"
+    - "Sans inversibilité plusieurs valeurs de theta donnent la même autocorrélation rho(1)"
+
+- id: UTS-17
+  level: M1
+  course: Univariate_Time_Series
+  type: multi-hop
+  difficulty: 3
+  question: "En quoi le test de Phillips-Perron diffère-t-il du test de Dickey-Fuller augmenté dans la façon de traiter l'autocorrélation des erreurs ?"
+  expected_sources:
+    - {source: UTS.tex, slide_title: "Le test de Phillips-Perron (PP) : intuition"}
+    - {source: UTS.tex, slide_title: "Le test de Dickey-Fuller"}
+  answer_points:
+    - "DF augmenté : retards de Delta X_t ajoutés dans la régression (correction paramétrique)"
+    - "Phillips-Perron : correction non paramétrique des statistiques (variance de long terme)"
+
+# ---------------------------------------------------------------- M1 / MTS
+- id: MTS-01
+  level: M1
+  course: Multivariate_Time_Series
+  type: definition
+  difficulty: 1
+  question: "Que dit le théorème de Wold dans le cas multivarié ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Théorème de Wold multivarié"}
+  answer_points:
+    - "Tout processus stationnaire causal s'écrit Y_t = mu + somme Psi_i eps_{t-i} : représentation VMA(infini)"
+    - "eps_t bruit blanc vectoriel de covariance Sigma_eps, non corrélé dans le temps (Gamma_eps(h) = 0 pour h != 0)"
+    - "Sigma_eps n'est pas nécessairement diagonale : corrélations instantanées possibles"
+
+- id: MTS-02
+  level: M1
+  course: Multivariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Quelle est la condition de stabilité d'un VAR(1) et d'où vient-elle ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "VAR($1$) et conditions de stabilité"}
+  answer_points:
+    - "det(I_k - Phi_1 z) != 0 pour |z| <= 1, ou valeurs propres de Phi_1 toutes de module < 1"
+    - "Vient de l'inversibilité de Phi(L) = I - Phi_1 L et de la sommabilité absolue de Phi_1^i"
+    - "Espérance (I - Phi_1)^{-1} C"
+
+- id: MTS-03
+  level: M1
+  course: Multivariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Comment la décomposition de la matrice compagnon permet-elle d'étendre la condition de stabilité à un VAR(p) ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Décomposition de la matrice compagnon"}
+    - {source: MTS.tex, slide_title: "VAR($p$) et réécriture VAR($1$)"}
+  answer_points:
+    - "Réécriture du VAR(p) en VAR(1) de dimension kp avec la matrice compagnon Phi"
+    - "Phi = V Lambda V^{-1} donc Phi^j = V Lambda^j V^{-1}"
+    - "Si toutes les valeurs propres lambda_j ont un module < 1, Phi^j -> 0 et la suite est absolument sommable"
+
+- id: MTS-04
+  level: M1
+  course: Multivariate_Time_Series
+  type: definition
+  difficulty: 2
+  question: "Comment définit-on la causalité au sens de Granger dans le cas multivarié ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Définition de la Causalité en multivarié"}
+  answer_points:
+    - "Comparaison des MSE de prévision Sigma_Z(h | F_t) avec et sans le passé de X"
+    - "X cause Z si la MSE avec X est strictement plus petite (au sens des matrices semi-définies positives)"
+
+- id: MTS-05
+  level: M1
+  course: Multivariate_Time_Series
+  type: multi-hop
+  difficulty: 3
+  question: "Quelle est la différence entre causalité de Granger et causalité instantanée, et pourquoi la causalité instantanée existe-t-elle forcément dans les deux sens ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Définition de la causalité instantanée"}
+    - {source: MTS.tex, slide_title: "Définition de la Causalité en multivarié"}
+  answer_points:
+    - "Causalité de Granger : amélioration de la prévision grâce au passé de l'autre variable"
+    - "Causalité instantanée : provient de chocs non orthogonaux, E(eps_1t eps_2t') != 0"
+    - "Sigma_eps symétrique (sigma_12 = sigma_21) donc la causalité instantanée est symétrique et n'informe pas sur le sens cause-effet"
+
+- id: MTS-06
+  level: M1
+  course: Multivariate_Time_Series
+  type: procedure
+  difficulty: 2
+  question: "Comment choisir l'ordre des variables dans un VAR pour une décomposition de Cholesky ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Ordonnancement des variables du VAR"}
+  answer_points:
+    - "Placer en premier la variable la plus susceptible d'impacter les autres contemporainement, en dernier la moins susceptible"
+    - "Exemple : international, national, régional, ventes"
+
+- id: MTS-07
+  level: M1
+  course: Multivariate_Time_Series
+  type: formula
+  difficulty: 1
+  question: "Comment calcule-t-on les multiplicateurs de long terme d'un VAR(p) ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Les multiplicateurs de long terme"}
+  answer_points:
+    - "Psi_infini = somme des Psi_i = Psi(1)"
+    - "Psi(1) = (I_k - Phi_1 - ... - Phi_p)^{-1}"
+
+- id: MTS-08
+  level: M1
+  course: Multivariate_Time_Series
+  type: reasoning
+  difficulty: 2
+  question: "Dans quels cas l'estimateur SURE de Zellner coïncide-t-il avec les OLS ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Estimation SURE à la Zellner"}
+  answer_points:
+    - "SURE = GLS avec Sigma_eps^{-1} kronecker I_n"
+    - "Coïncide avec OLS si Sigma_eps est diagonale (équations indépendantes) ou si toutes les équations ont les mêmes régresseurs"
+    - "Intérêt du SURE pour les VAR contraints (near-VAR)"
+
+- id: MTS-09
+  level: M1
+  course: Multivariate_Time_Series
+  type: procedure
+  difficulty: 2
+  question: "Comment tester l'ordre d'un VAR avec un test du ratio de vraisemblance ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Test LR pour l'ordre d'un VAR"}
+  answer_points:
+    - "Un VAR(p' < p) est un VAR contraint ; comparaison des log-vraisemblances à l'optimum"
+    - "La log-vraisemblance gaussienne fait intervenir n/2 ln det(Sigma_eps_hat)"
+    - "Statistique LR basée sur la différence des déterminants des matrices de covariance des résidus"
+
+- id: MTS-10
+  level: M1
+  course: Multivariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Combien de contraintes faut-il imposer pour identifier un VAR structurel de type A-model et quelle forme prennent-elles ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Contraintes d'identification"}
+  answer_points:
+    - "k(k-1)/2 contraintes"
+    - "Typiquement des 0 et des 1 dans A : diagonale normalisée à 1, zéros au-dessus de la diagonale (triangulaire inférieure)"
+    - "Exactement k(k-1)/2 : juste-identifié ; davantage : sur-identifié"
+
+- id: MTS-11
+  level: M1
+  course: Multivariate_Time_Series
+  type: definition
+  difficulty: 1
+  question: "Quelle est la définition de la cointégration selon Engle et Granger (1987) ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Cointégration et vecteur cointégrant"}
+  answer_points:
+    - "Toutes les composantes de X_t sont I(delta)"
+    - "Il existe beta != 0 tel que beta' X_t est I(delta - b) avec b > 0 ; beta est le vecteur cointégrant"
+    - "Dans le cours delta = 1 et b = 1"
+
+- id: MTS-12
+  level: M1
+  course: Multivariate_Time_Series
+  type: procedure
+  difficulty: 2
+  question: "Décrivez la procédure en deux étapes d'Engle et Granger et ses limites."
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Procédure en deux étapes"}
+  answer_points:
+    - "Étape 1 : estimer beta par OLS et récupérer les résidus ; étape 2 : tester si les résidus sont I(0)"
+    - "OLS super-consistants (T(beta_hat - beta) -> 0) mais biaisés si les erreurs ne sont pas indépendantes"
+    - "Distribution non standard : valeurs critiques non standard pour le test sur les résidus"
+
+- id: MTS-13
+  level: M1
+  course: Multivariate_Time_Series
+  type: reasoning
+  difficulty: 3
+  question: "Qu'est-ce que l'estimateur Fully Modified OLS et en quoi diffère-t-il des DOLS ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Fully modified OLS"}
+    - {source: MTS.tex, slide_title: "Théorie limite des dynamic OLS"}
+  answer_points:
+    - "FMOLS corrige les deux biais (endogénéité, corrélation sérielle) via Xi_0 et Xi_1"
+    - "Correction non paramétrique, contrairement aux DOLS (ajout de retards et avances paramétriques)"
+    - "Résultat de Phillips et Hansen (1990) : distribution limite mixte gaussienne"
+
+- id: MTS-14
+  level: M1
+  course: Multivariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Quelle est la statistique du test de la trace de Johansen ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Test de trace"}
+  answer_points:
+    - "LR = - n somme_{i=r+1}^{k} log(1 - lambda_hat_i)"
+    - "H0 : r relations de cointégration contre H1 : r = k ; g = k - r racines unitaires"
+    - "Basée sur les valeurs propres de l'analyse canonique"
+
+- id: MTS-15
+  level: M1
+  course: Multivariate_Time_Series
+  type: reasoning
+  difficulty: 3
+  question: "Dans un VECM, que signifie une constante « dans l'espace de cointégration » ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Cas 2 : constante"}
+  answer_points:
+    - "Avec une espérance mu_0 != 0, le terme de correction s'écrit alpha beta_0' (Y_{t-1}, 1)' avec tau = - beta mu_0"
+    - "La constante est restreinte à l'espace cointégré (nu = alpha tau'), pas de tendance linéaire dans les niveaux"
+
+- id: MTS-16
+  level: M1
+  course: Multivariate_Time_Series
+  type: definition
+  difficulty: 2
+  question: "Qu'est-ce que la cointégration fractionnaire ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Définition de la cointégration fractionn"}
+  answer_points:
+    - "Même définition qu'Engle-Granger mais avec des ordres delta et b réels (non entiers)"
+    - "beta' X_t ~ I(delta - b) avec b > 0"
+
+- id: MTS-17
+  level: M1
+  course: Multivariate_Time_Series
+  type: formula
+  difficulty: 2
+  question: "Quelle est l'équation des pertes de crédit attendues (ECL) dans l'approche IFRS 9 vue en cours ?"
+  expected_sources:
+    - {source: MTS.tex, slide_title: "Équation des ECLs"}
+  answer_points:
+    - "ECL = E[ somme_k PD * LGD * EAD / (1 + EIR)^{t_{k+1} - t_0} | X_0 ]"
+    - "PD probabilité de défaut marginale, LGD perte en cas de défaut, EAD exposition, EIR taux effectif, X_0 information macro"
+
+# ---------------------------------------------------------------- M2 / HFE
+- id: HFE-01
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 1
+  question: "Qu'est-ce que le volatility clustering et est-il compatible avec la stationnarité des rendements ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Volatility clustering"}
+  answer_points:
+    - "Les grands rendements absolus apparaissent en grappes : périodes turbulentes suivies de périodes calmes, récurrentes mais non périodiques"
+    - "Compatible avec une distribution marginale homoscédastique (variance constante)"
+
+- id: HFE-02
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 1
+  question: "What is the leverage effect in financial returns?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Leverage effects"}
+  answer_points:
+    - "Asymmetric response of volatility to past returns: a price drop raises volatility more than a rise of the same size"
+    - "Evidence: correlation between -r^- and |r_t| larger than between r^+ and |r_t|"
+
+- id: HFE-03
+  level: M2
+  course: Financial_Econometrics
+  type: procedure
+  difficulty: 2
+  question: "Comment teste-t-on la présence d'effets ARCH (test ARCH-LM) ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "ARCH test"}
+  answer_points:
+    - "Régression auxiliaire des résidus au carré sur leurs p retards"
+    - "H0 : phi_1 = ... = phi_p = 0 ; statistique LM = T R^2 -> chi2(p)"
+    - "Alternative : Ljung-Box sur les rendements au carré"
+
+- id: HFE-04
+  level: M2
+  course: Financial_Econometrics
+  type: formula
+  difficulty: 2
+  question: "Quelle est la variance inconditionnelle d'un processus ARCH(1) et sous quelle condition existe-t-elle ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Moments of ARCH(1)"}
+  answer_points:
+    - "Variance conditionnelle sigma_t^2 = alpha_0 + alpha_1 r_{t-1}^2, espérance conditionnelle nulle"
+    - "Sous stationnarité E(r_t^2) = alpha_0 / (1 - alpha_1)"
+
+- id: HFE-05
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 2
+  question: "Comment s'écrit un modèle BEKK-GARCH et quel est son lien avec le modèle VECH ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "BEKK model"}
+  answer_points:
+    - "H_t = C'C + somme A' eps eps' A + somme B' H_{t-1} B (forme quadratique garantissant H_t définie positive)"
+    - "Chaque BEKK implique un unique VECH, la réciproque est fausse ; contient les modèles diagonaux"
+    - "Engle et Kroner (1995)"
+
+- id: HFE-06
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 1
+  question: "Que dit l'hypothèse d'efficience des marchés (EMH) et pourquoi le prix est-il alors une martingale ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Efficiant Market Hypothesis"}
+  answer_points:
+    - "E(S_{t+1} | I_t) = S_t : les prix futurs ne sont pas prévisibles"
+    - "Avec E|S_t| < infini et E(S_{t+1} - S_t | I_t) = 0, S_t est une martingale"
+
+- id: HFE-07
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 2
+  question: "Qu'est-ce que la variance intégrée (IV) et quel est son lien avec la variation quadratique ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Integrated Variance (IV)"}
+  answer_points:
+    - "IV_t = intégrale de sigma_s^2 sur [t-1, t] ; racine = volatilité journalière"
+    - "Variation quadratique = plim de la somme des carrés d'accroissements sur une partition de plus en plus fine = IV_t"
+    - "Cas de volatilité constante : IV = sigma^2 t"
+
+- id: HFE-08
+  level: M2
+  course: Financial_Econometrics
+  type: formula
+  difficulty: 2
+  question: "Comment la variance réalisée estime-t-elle la variance intégrée et quelle est sa distribution asymptotique ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Realized Variance"}
+  answer_points:
+    - "RV_t = somme des M rendements intra-journaliers au carré"
+    - "En absence de sauts, sqrt(n)(RV - IV)(2 IQ)^{-1/2} -> N(0,1), IQ = quarticité intégrée"
+
+- id: HFE-09
+  level: M2
+  course: Financial_Econometrics
+  type: reasoning
+  difficulty: 2
+  question: "Qu'appelle-t-on bruit de microstructure et quelles en sont les sources ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "Microstructure noise"}
+  answer_points:
+    - "Le log-prix efficient est inobservable : prix discrets (tick), modèles continus en théorie"
+    - "Sources : frictions (tick, arrondis), effets informationnels (réponse graduelle à un block trade), erreurs d'enregistrement"
+
+- id: HFE-10
+  level: M2
+  course: Financial_Econometrics
+  type: formula
+  difficulty: 3
+  question: "Quelle est la limite en diffusion du GARCH(1,1) selon Nelson (1990) et pourquoi se comporte-t-elle différemment du GARCH discret ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "The diffusion approximation of Nelson"}
+  answer_points:
+    - "dp_t = sigma_t dW1 ; d sigma_t^2 = (omega - theta sigma_t^2) dt + lambda sigma_t^2 dW2"
+    - "Deux browniens indépendants alors que le GARCH est piloté par un seul bruit : la volatilité évolue indépendamment du prix"
+
+- id: HFE-11
+  level: M2
+  course: Financial_Econometrics
+  type: reasoning
+  difficulty: 2
+  question: "Pourquoi dit-on que le GARCH est « lent » à réagir à un changement de volatilité ?"
+  expected_sources:
+    - {source: HFE.tex, slide_title: "GARCH is Slow"}
+  answer_points:
+    - "Expérience de pensée : saut de la volatilité de 0.2 à 0.4 en T"
+    - "Avec alpha + beta = 1 (alpha = 0.05, beta = 0.95), E(sigma^2_{T+k}) est une moyenne pondérée des anciens et nouveaux carrés : convergence lente vers le nouveau niveau"
+    - "Motivation des mesures réalisées"
+
+- id: HFE-12
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 1
+  question: "Quels éléments faut-il pour calculer une Value-at-Risk ?"
+  expected_sources:
+    - {source: HFE_C4.tex, slide_title: "Value-at-Risk computation"}
+  answer_points:
+    - "La distribution des P&L de l'actif ou du portefeuille"
+    - "Le taux de couverture (1 - niveau de confiance), par exemple 5 %"
+    - "L'horizon de détention"
+
+- id: HFE-13
+  level: M2
+  course: Financial_Econometrics
+  type: formula
+  difficulty: 2
+  question: "Quelle est la formule de l'Expected Shortfall pour une distribution normale ?"
+  expected_sources:
+    - {source: HFE_C4.tex, slide_title: "Expected Shortfall computation"}
+  answer_points:
+    - "ES(alpha) = - mu - sigma * phi(Phi^{-1}(alpha)) / (1 - alpha)"
+    - "phi densité et Phi fonction de répartition de la loi normale ; alpha taux de couverture"
+
+- id: HFE-14
+  level: M2
+  course: Financial_Econometrics
+  type: definition
+  difficulty: 1
+  question: "Qu'est-ce que le backtesting d'un modèle de risque et pourquoi l'utilise-t-on ?"
+  expected_sources:
+    - {source: HFE_C4.tex, slide_title: "Backtesting"}
+  answer_points:
+    - "Cadre statistique formel vérifiant que les pertes réalisées sont cohérentes avec les pertes projetées (Jorion, 2007)"
+    - "Comparaison systématique des prévisions de risque et des rendements réalisés"
+    - "Usages : réglementation financière, gestionnaires de risque, comparaison de modèles"
+
+- id: HFE-15
+  level: M2
+  course: Financial_Econometrics
+  type: multi-hop
+  difficulty: 3
+  question: "Quels sont les tests de Kupiec et de Christoffersen utilisés pour backtester une VaR, et que testent-ils respectivement ?"
+  expected_sources:
+    - {source: HFE_C4.tex, slide_title: "Backtesting"}
+  answer_points:
+    - "Kupiec : test de couverture non conditionnelle (fréquence des violations égale au taux de couverture)"
+    - "Christoffersen : indépendance des violations / couverture conditionnelle"
+
+# ---------------------------------------------------------------- M2 / SA
+- id: SA-01
+  level: M2
+  course: Duration_Models
+  type: definition
+  difficulty: 1
+  question: "Quels sont les trois types de censure en analyse de survie ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "Censoring classification"}
+  answer_points:
+    - "Type I : date de fin d'étude fixée à l'avance"
+    - "Type II : fraction de défaillances fixée à l'avance"
+    - "Censure aléatoire, indépendante de l'étude (ex. sortie d'un patient sans lien avec la maladie) ; son caractère aléatoire évite le biais"
+
+- id: SA-02
+  level: M2
+  course: Duration_Models
+  type: definition
+  difficulty: 1
+  question: "Define the survival function and the hazard function."
+  expected_sources:
+    - {source: SA.tex, slide_title: "Hazard and Survival Functions"}
+  answer_points:
+    - "S(t) = P(T > t), right-continuous, equals 1 at 0 and decreases"
+    - "h(t) = lim P(t < T < t + Delta | T > t) / Delta : instantaneous failure rate given survival up to t"
+
+- id: SA-03
+  level: M2
+  course: Duration_Models
+  type: formula
+  difficulty: 2
+  question: "Quels sont le temps de survie moyen et médian d'une loi de Weibull ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "The Weibull Hazard Function"}
+  answer_points:
+    - "E(T) = Gamma(1 + 1/alpha) / lambda"
+    - "Médiane tau = log(2)^{1/alpha} / lambda"
+
+- id: SA-04
+  level: M2
+  course: Duration_Models
+  type: formula
+  difficulty: 1
+  question: "Comment s'écrit l'estimateur de Kaplan-Meier ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "The Kaplan-Meier estimator"}
+  answer_points:
+    - "S_hat(t) = produit sur les t_i <= t de (1 - d_i / n_i)"
+    - "d_i défaillances au temps t_i, n_i individus à risque ; produit des probabilités conditionnelles de survie"
+    - "Non paramétrique, évite la mauvaise spécification d'un modèle paramétrique"
+
+- id: SA-05
+  level: M2
+  course: Duration_Models
+  type: formula
+  difficulty: 2
+  question: "Comment est construite la statistique du test du log-rank et quelle est sa loi ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "The $\\log$-rank test statistics"}
+  answer_points:
+    - "U_0 = somme (d_0i - E(d_0i)) à partir des tables 2x2 ; V(U_0) = somme V(d_0i)"
+    - "U_0^2 / V(U_0) ~ chi2(1) ; aussi appelé test de Mantel-Haenszel ; k groupes : chi2(k-1)"
+
+- id: SA-06
+  level: M2
+  course: Duration_Models
+  type: definition
+  difficulty: 2
+  question: "Comment s'écrit le modèle de Cox à risques proportionnels et comment interpréter le signe de $\\beta$ dans une comparaison traitement/contrôle ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "Introduction to the partial likelihood"}
+  answer_points:
+    - "h_i(t) = psi_i h_0(t) avec psi_i = exp(x_i' beta) : rapport de risques (hazard ratio)"
+    - "Traitement efficace : beta < 0, psi < 1 dans le groupe traité (psi = 1 dans le groupe contrôle)"
+
+- id: SA-07
+  level: M2
+  course: Duration_Models
+  type: reasoning
+  difficulty: 3
+  question: "Que sont les résidus de Schoenfeld et comment servent-ils à vérifier l'hypothèse de risques proportionnels ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "Schoenfeld residuals"}
+  answer_points:
+    - "Termes individuels du score de la log-vraisemblance partielle : r_i = x_i - x_bar(t_i), moyenne pondérée des covariables à risque"
+    - "Graphique des r_i : centrés sur 0 si l'hypothèse de risques proportionnels est correcte"
+
+- id: SA-08
+  level: M2
+  course: Duration_Models
+  type: reasoning
+  difficulty: 2
+  question: "Quelle est la différence d'interprétation entre un modèle de Cox et un modèle AFT (Accelerated Failure Time) ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "The Accelerated Failure Time model"}
+  answer_points:
+    - "Cox : rapport de risques e^beta supposé constant dans le temps (risques proportionnels)"
+    - "AFT : le temps de survie d'un groupe est un multiple theta = e^gamma de celui de l'autre groupe"
+
+- id: SA-09
+  level: M2
+  course: Duration_Models
+  type: definition
+  difficulty: 2
+  question: "Qu'est-ce qu'un modèle de survie à fragilité (frailty) ?"
+  expected_sources:
+    - {source: SA.tex, slide_title: "Frailty survival models : principle"}
+  answer_points:
+    - "Facteur commun omega_i (effet aléatoire) partagé par les individus d'un cluster : h_ij = h_0 omega_i exp(x_ij beta)"
+    - "omega_i de loi gamma, ou omega_i = exp(u_i sigma) avec u_i normal : effets fixes et aléatoires sur le même plan"
+
+# ---------------------------------------------------------------- M2 / NCE
+- id: NCE-01
+  level: M2
+  course: Research_Econometrics
+  type: definition
+  difficulty: 2
+  question: "Qu'est-ce qu'un processus AR à phase mixte (MAR(p,q)) ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "Mixed phase AR processes"}
+  answer_points:
+    - "AR(p+q) strictement stationnaire dont le polynôme a des racines à la fois à l'extérieur et à l'intérieur du cercle unité (jamais sur)"
+    - "p racines causales, q racines non causales ; bruit blanc fort"
+
+- id: NCE-02
+  level: M2
+  course: Research_Econometrics
+  type: formula
+  difficulty: 3
+  question: "Comment s'écrit la solution stationnaire d'un MAR(1,1) ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "MAR$(1,1)$"}
+  answer_points:
+    - "Factorisation (1 - phi° F)(1 - phi• B) X_t = eps_t avec |phi°| < 1 et |phi•| < 1"
+    - "Représentation MA(infini) bilatérale : somme sur les eps futurs (poids (phi°)^k) et passés (poids (phi•)^k), divisée par 1 - phi° phi•"
+
+- id: NCE-03
+  level: M2
+  course: Research_Econometrics
+  type: reasoning
+  difficulty: 2
+  question: "Pourquoi un processus MA gaussien n'est-il pas identifiable (non-unicité de la représentation) ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "Non-uniqueness of Gaussian MA processes"}
+  answer_points:
+    - "X_t = eps_t + theta eps_{t-1} et X_t = eps'_t + (1/theta) eps'_{t-1} (variance ajustée) ont la même structure de probabilité"
+    - "Les deux bruits sont gaussiens iid : la loi ne distingue pas les représentations causale et non causale"
+
+- id: NCE-04
+  level: M2
+  course: Research_Econometrics
+  type: definition
+  difficulty: 3
+  question: "Quand dit-on qu'une loi appartient au domaine d'attraction d'une loi $\\alpha$-stable ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "Domains of attraction of $\\alpha$-stable"}
+  answer_points:
+    - "Queue en puissance : P(eps > x) ~ x^{-alpha} L(x), L à variation lente, alpha dans (0,2)"
+    - "Équilibre des queues : P(eps > x)/P(|eps| > x) -> c"
+    - "Condition nécessaire et suffisante sur la fonction caractéristique : log|phi(s)| ~ - sigma^alpha |s|^alpha L(1/|s|) quand s -> 0"
+
+- id: NCE-05
+  level: M2
+  course: Research_Econometrics
+  type: reasoning
+  difficulty: 3
+  question: "Comment prédire l'éclatement d'une bulle avec un AR(1) non causal à innovations $\\alpha$-stables ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "Bubble prediction in stable non-causal"}
+  answer_points:
+    - "X_t = phi X_{t+1} + eps_t avec eps alpha-stable : bulles multiples pour les grandes valeurs d'eps"
+    - "L'espérance conditionnelle E(X_{t+h} | X_{t-1}) = |phi|^{(h+1)(alpha-1)} X_{t-1} prédit toujours une décroissance exponentielle, donc s'écarte des trajectoires"
+    - "Utiliser la densité prédictive : probabilité de collapse P(X_{t+h} - phi X_{t+h+1} > c | X_t) ; approches de Gouriéroux-Jasiak (2016) et Fries (2022)"
+
+- id: NCE-06
+  level: M2
+  course: Research_Econometrics
+  type: formula
+  difficulty: 2
+  question: "Sur quelle hypothèse repose l'estimateur LAD des modèles MAR et quelle est sa fonction objectif concentrée ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "Least Absolute Deviation (LAD)"}
+  answer_points:
+    - "Approximation de vraisemblance avec un bruit laplacien"
+    - "sigma_hat = moyenne des |eps_t| ; objectif concentré en - log(somme |eps_t|)"
+
+- id: NCE-07
+  level: M2
+  course: Research_Econometrics
+  type: definition
+  difficulty: 2
+  question: "Quel est le principe de l'estimateur GCov de Gouriéroux et Jasiak (2023) ?"
+  expected_sources:
+    - {source: ETPhD_NCE.tex, slide_title: "Generalized Covariance (GCov)"}
+  answer_points:
+    - "Modèles semi-paramétriques g(Y_t; theta) = u_t avec u_t iid"
+    - "Minimiser une statistique portmanteau multivariée des résidus : somme_h Tr[R_hat^2(h, theta)]"
+    - "Applicable aux VAR mixtes causaux/non causaux non linéaires, volatilité stochastique"
+
+# ---------------------------------------------------------------- Cloisonnement par niveau
+- id: SCOPE-01
+  level: M1
+  course: Financial_Econometrics
+  type: not-in-corpus
+  difficulty: 2
+  question: "Comment s'écrit un modèle BEKK-GARCH ?"
+  expected_sources: []
+  answer_points:
+    - "Un étudiant M1 ne doit pas recevoir les slides HFE (M2) : la réponse doit signaler que ce point n'est pas couvert par ses cours, ou répondre en connaissances générales taguées"
+  notes: "Même question que HFE-05 posée par un M1 : vérifie le filtre de niveau."
+
+# ---------------------------------------------------------------- Hors corpus (en domaine)
+- id: NIC-01
+  level: M1
+  course: Univariate_Time_Series
+  type: not-in-corpus
+  difficulty: 2
+  question: "Comment fonctionne le test KPSS de stationnarité ?"
+  expected_sources: []
+  answer_points:
+    - "Le test KPSS n'est pas dans les supports : la réponse doit l'indiquer et, si elle complète, taguer [Source: Connaissances Générales]"
+    - "Ne doit pas attribuer le KPSS à une slide du cours"
+
+- id: NIC-02
+  level: M2
+  course: Financial_Econometrics
+  type: not-in-corpus
+  difficulty: 2
+  question: "Comment estime-t-on le paramètre de mémoire longue par la méthode GPH (Geweke-Porter-Hudak) ?"
+  expected_sources: []
+  answer_points:
+    - "GPH absent des supports : signaler l'absence, pas de citation inventée"
+
+# ---------------------------------------------------------------- Hors domaine (refus attendu)
+- id: OOD-01
+  level: M1
+  course: Univariate_Time_Series
+  type: out-of-domain
+  difficulty: 1
+  question: "Peux-tu m'expliquer comment estimer un modèle logit sur données de panel ?"
+  expected_sources: []
+  answer_points:
+    - "Refus poli : hors du cadre du cours (micro-économétrie), pas de réponse détaillée"
+
+- id: OOD-02
+  level: M2
+  course: Financial_Econometrics
+  type: out-of-domain
+  difficulty: 1
+  question: "Qui a remporté la Coupe du monde de football 2022 ?"
+  expected_sources: []
+  answer_points:
+    - "Refus : culture générale hors cadre"
+
+- id: OOD-03
+  level: M1
+  course: Multivariate_Time_Series
+  type: out-of-domain
+  difficulty: 1
+  question: "Écris-moi un réseau de neurones convolutif en PyTorch pour classifier des images."
+  expected_sources: []
+  answer_points:
+    - "Refus : machine learning généraliste / vision hors cadre"

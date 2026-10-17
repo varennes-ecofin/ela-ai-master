@@ -90,12 +90,17 @@ def format_context(docs: Sequence[Document]) -> str:
         docs: Retrieved documents.
 
     Returns:
-        One ``>> [Source: file]`` section per document.
+        One ``>> [Source: file — chapter > section > slide]`` section per
+        document, page content kept verbatim (line breaks preserve lists and
+        display math).
     """
     parts = []
     for doc in docs:
-        src = doc.metadata.get("source", "Inconnu")
-        parts.append(f">> [Source: {src}]\n{doc.page_content.replace(chr(10), ' ')}")
+        meta = doc.metadata or {}
+        src = meta.get("source", "Inconnu")
+        where = " > ".join(b for b in (meta.get("chapter"), meta.get("section"), meta.get("slide_title")) if b)
+        label = f"{src} — {where}" if where else src
+        parts.append(f">> [Source: {label}]\n{doc.page_content}")
     return "\n\n".join(parts)
 
 

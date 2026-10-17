@@ -162,18 +162,63 @@ class Settings(BaseSettings):
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
     # ------------------------------------------------------------------
-    # Retrieval (phase 2 will extend this block)
+    # Knowledge base: ingestion, embeddings, store, retrieval, reranking
     # ------------------------------------------------------------------
-    chroma_db_path: str = "./data/chroma_db"
     latex_source_dir: str = "./data/latex"
-    embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-    retrieval_k: int = Field(default=20, description="Candidates fetched by each retriever (BM25, vector).")
-    retrieval_bm25_weight: float = Field(default=0.5, description="Weight of BM25 in the ensemble (vector = 1 - w).")
+    chunk_target_chars: int = Field(default=1200, description="Target size of manuscript text chunks.")
+    chunk_max_chars: int = Field(default=2500, description="Hard limit above which a slide/section is split.")
+    ingest_include_notes: bool = Field(default=True, description="Attach beamer \\note{} speaker notes to slides.")
+
+    embedding_provider: Literal["local", "ilaas", "openai"] = Field(
+        default="local",
+        description="local = sentence-transformers on CPU; ilaas/openai = OpenAI-compatible embedding API.",
+    )
+    embedding_model: str = Field(default="BAAI/bge-m3", description="Model name (local repo or API model id).")
+    embedding_dim: int = Field(default=1024, description="Vector dimension of the embedding model.")
+    embedding_base_url: str | None = Field(default=None, description="API base URL (provider 'openai').")
+    embedding_api_key: SecretStr | None = Field(default=None, description="API key (defaults to ILAAS_API_KEY).")
+    embedding_batch_size: int = 16
+    embedding_local_fallback: bool = Field(
+        default=True,
+        description="When the embedding API fails, load the same model locally (vectors stay compatible).",
+    )
+
+    retrieval_backend: Literal["pgvector", "chroma"] = Field(
+        default="pgvector",
+        description="pgvector = rag_chunks table in DATABASE_URL (hybrid SQL); chroma = local directory + BM25.",
+    )
+    chroma_db_path: str = "./data/chroma_db"
+    retrieval_k: int = Field(default=20, description="Candidates fetched from the store before reranking.")
+    retrieval_manuscript_k: int = Field(
+        default=4,
+        description="Extra candidates taken from manuscripts (HDR, articles); slides are searched first.",
+    )
+    retrieval_manuscript_max: int = Field(
+        default=1,
+        description="Max manuscript chunks kept in the final top-n after reranking (slides come first).",
+    )
+    retrieval_lexical_weight: float = Field(default=0.5, description="Weight of the full-text leg (vector = 1 - w).")
+    retrieval_rrf_k: int = Field(default=60, description="Reciprocal Rank Fusion constant.")
+    retrieval_fts_config: str = Field(default="french", description="PostgreSQL text-search configuration.")
+    retrieval_expand_elements: bool = Field(
+        default=True,
+        description="Replace a retrieved definition/theorem chunk by its parent slide (fuller context).",
+    )
+
+    rerank_provider: Literal["local", "flashrank", "none"] = Field(
+        default="none",
+        description=(
+            "none = fusion order (best measured configuration with bge-m3, 0.25 s/question); "
+            "flashrank = ONNX cross-encoder; local = sentence-transformers CrossEncoder."
+        ),
+    )
+    rerank_model: str | None = Field(
+        default=None,
+        description="Reranker model; default ms-marco-MultiBERT-L-12 (flashrank) or BAAI/bge-reranker-v2-m3 (local).",
+    )
     rerank_top_n: int = Field(default=5, description="Documents kept after reranking (0 disables reranking).")
-    rerank_model_name: str = "ms-marco-MiniLM-L-12-v2"
+    rerank_max_length: int = Field(default=1024, description="Token limit per (query, passage) pair (local).")
     rerank_cache_dir: str = Field(default="./data/flashrank", description="Where FlashRank stores its model.")
-    chunk_size: int = 2000
-    chunk_overlap: int = 200
 
     # ------------------------------------------------------------------
     # Normalisation of raw environment values
@@ -256,6 +301,31 @@ class Settings(BaseSettings):
     def reasoning_effort(self) -> str | None:
         """Reasoning effort to send, or ``None`` when ``LLM_REASONING_EFFORT=omit``."""
         return None if self.llm_reasoning_effort == "omit" else self.llm_reasoning_effort
+
+    @property
+    def rerank_model_name(self) -> str:
+        """Reranker model: ``RERANK_MODEL`` or the default of the selected provider."""
+        if self.rerank_model:
+            return self.rerank_model
+        return "ms-marco-MultiBERT-L-12" if self.rerank_provider == "flashrank" else "BAAI/bge-reranker-v2-m3"
+
+    def embedding_endpoint(self) -> tuple[str, str | None]:
+        """Return ``(base_url, api_key)`` of the embedding API.
+
+        Provider ``ilaas`` uses ``ILAAS_EMBED_BASE_URL`` / ``ILAAS_API_KEY``;
+        provider ``openai`` uses ``EMBEDDING_BASE_URL`` / ``EMBEDDING_API_KEY``.
+        ``EMBEDDING_API_KEY`` overrides the ILaaS key when both are set.
+
+        Raises:
+            ValueError: For the local provider, or when the base URL is missing.
+        """
+        if self.embedding_provider == "local":
+            raise ValueError("The local embedding provider has no API endpoint.")
+        key = self.embedding_api_key or (self.ilaas_api_key if self.embedding_provider == "ilaas" else None)
+        base_url = self.ilaas_embed_base_url if self.embedding_provider == "ilaas" else self.embedding_base_url
+        if not base_url:
+            raise ValueError("EMBEDDING_BASE_URL is not set for EMBEDDING_PROVIDER=openai.")
+        return base_url, key.get_secret_value() if key else None
 
     def provider_credentials(self, provider: ProviderName) -> tuple[str, str | None]:
         """Return ``(base_url, api_key)`` for a provider.

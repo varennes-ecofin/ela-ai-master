@@ -33,6 +33,7 @@ from ela.engine import ElaEngine
 from ela.history import bounded_history, to_turns
 from ela.llm import SUPPORTED_IMAGE_MIMES
 from ela.log import configure_logging
+from ela.mathfmt import normalize_math
 from ela.retrieval import resources
 
 configure_logging()
@@ -203,6 +204,8 @@ async def main(message: cl.Message):
     await msg.send()
     async for token in engine.ask(question=message.content, chat_history=history, images=images):
         await msg.stream_token(token)
+    # KaTeX only understands $...$ / $$...$$: rewrite \(..\), \[..\] and bare environments
+    msg.content = normalize_math(msg.content)
     await msg.update()
 
 
@@ -326,6 +329,6 @@ async def _run_code_workshop(engine: ElaEngine, topic: str) -> None:
 
     msg_load = cl.Message(content=f"Génération du script **{language}** pour **{topic}**...")
     await msg_load.send()
-    msg_load.content = await engine.generate_code(topic, language)
+    msg_load.content = normalize_math(await engine.generate_code(topic, language))
     await msg_load.update()
     cl.user_session.set("code_mode", None)

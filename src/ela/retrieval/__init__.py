@@ -1,9 +1,10 @@
-"""Retrieval layer: shared resources, level-scoped hybrid retriever.
+"""Retrieval layer: embeddings, chunk store, reranker, level-scoped retriever.
 
-Phase 1 keeps the Phase-0 algorithm (Chroma + BM25 ensemble + FlashRank)
-but loads every heavy component **once per process** instead of once per
-chat session. Phase 2 replaces the store, embeddings and reranker behind
-the same ``get_retriever(level)`` entry point.
+Phase 2: ``bge-m3`` embeddings, hybrid search (vector + French full text,
+RRF) in PostgreSQL/pgvector (Chroma + BM25 as fallback), multilingual
+reranking, typed chunks (slides, definitions, manuscripts). Every heavy
+component is loaded **once per process** (:mod:`ela.retrieval.resources`)
+and chat sessions share it through ``get_retriever(level)``.
 """
 
 from ela.retrieval.retriever import ScopedRetriever, get_retriever
