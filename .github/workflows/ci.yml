@@ -24,11 +24,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      # Same install as the Docker images (CPU-only torch); matplotlib for the sandbox runner tests.
+      # CPU-only torch from the PyTorch index first (its index also carries stale packages,
+      # so it must not be mixed with PyPI), then the package from PyPI; matplotlib for the sandbox tests.
       - name: Install
         run: |
           uv venv --clear
-          uv pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev,admin]" matplotlib
+          uv pip install --index-url https://download.pytorch.org/whl/cpu torch
+          uv pip install -e ".[dev,admin]" matplotlib
       - name: Lint
         run: |
           uv run ruff check src apps tests
