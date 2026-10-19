@@ -27,7 +27,7 @@ jobs:
       # Same install as the Docker images (CPU-only torch); matplotlib for the sandbox runner tests.
       - name: Install
         run: |
-          uv venv
+          uv venv --clear
           uv pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev,admin]" matplotlib
       - name: Lint
         run: |
