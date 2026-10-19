@@ -1,6 +1,9 @@
-"""System prompts of ELA (French).
+"""Legacy prompts of ELA (French).
 
-Kept in one module so that Phase 3 (agent) can version and reuse them.
+The agent's prompts are versioned Markdown files in ``ela/agent/prompts/``.
+This module keeps the level supplements (shared with the agent), the code
+workshop prompt and the Phase-2 answer prompt used by the evaluation
+baseline (``ela.eval.legacy_pipeline``).
 """
 
 from __future__ import annotations
@@ -91,37 +94,6 @@ def level_instructions(user_level: str) -> str:
     return LEVEL_PROMPT_SUPPLEMENT.get(user_level, "")
 
 
-def quiz_prompt(topic: str, num_questions: int, context_text: str) -> str:
-    """Build the system prompt for quiz generation (JSON, no LaTeX)."""
-    return f"""
-Tu es ELA, un assistant expert pédagogique.
-
-TÂCHE : Créer un quiz QCM de {num_questions} questions sur le sujet : "{topic}".
-
-RÈGLES DE CONTENU (RAG) :
-1. Base-toi UNIQUEMENT sur le CONTEXTE DU COURS ci-dessous.
-2. Si le sujet n'est pas dans le cours, renvoie un JSON vide.
-
-RÈGLES DE FORMAT (CRITIQUE POUR ÉVITER LES BUGS) :
-1. **INTERDICTION TOTALE DU LATEX**. N'utilise jamais de symboles avec des backslashs.
-2. Écris les concepts mathématiques en TOUTES LETTRES ou en notation standard.
-3. La sortie doit être STRICTEMENT un objet JSON valide (RFC 8259).
-
-FORMAT ATTENDU :
-[
-    {{
-        "question": "Quelle est la définition du R-carré ?",
-        "options": ["A) La variance...", "B) La moyenne...", "C) ..."],
-        "correct_index": 0,
-        "explanation": "Le R-carré représente..."
-    }}
-]
-
-CONTEXTE DU COURS :
-{context_text}
-"""
-
-
 def code_prompt(topic: str, language: str, level_supplement: str, context_text: str) -> str:
     """Build the system prompt for the code workshop."""
     return f"""{ELA_BASE_INSTRUCTIONS}
@@ -137,7 +109,11 @@ RÈGLES DE CODAGE STRICTES (PYTHON) :
 2. **Importations** : Importe toutes les librairies nécessaires au début.
 3. **Données** : Le code DOIT générer ses propres données synthétiques (np.random) pour être autonome.
 4. **Vérification** : Le script ne doit pas contenir d'erreur de syntaxe (comme écraser une variable utilisée ensuite).
-5. **Visualisation** : Inclus un graphique matplotlib clair si pertinent.
+5. **Visualisation** : Inclus un graphique matplotlib clair si pertinent (sans `plt.show()` : les figures sont capturées automatiquement).
+6. **Autonomie** : aucun accès réseau ni fichier externe, aucune saisie (`input()`), graine aléatoire fixée (`np.random.seed(42)`), temps d'exécution de quelques secondes au plus.
+7. **Résultats imprimés** : le script DOIT imprimer ses résultats avec `print()` sous une forme lisible — pour une estimation, un tableau `paramètre | vraie valeur (si simulée) | estimation | écart-type | t-stat` (ou le `summary()` du modèle), puis les statistiques utiles au cours (log-vraisemblance, AIC/BIC, tests de diagnostic). Un script qui ne produit qu'un graphique est incomplet.
+8. **Tableau comparatif robuste** : construis-le à partir des objets estimés (`res.params`, `res.std_err` / `res.bse`, `res.tvalues`) indexés par nom de paramètre, et associe les vraies valeurs par un dictionnaire dont les clés sont EXACTEMENT les noms utilisés par la bibliothèque (arch : `mu`, `omega`, `alpha[1]`, `beta[1]` ; statsmodels ARIMA : `const`, `ar.L1`, `ma.L1`, `sigma2` ; OLS : noms des colonnes de `X_design`). Chaque paramètre estimé doit avoir sa vraie valeur (ex. `"mu": 0.0` si la simulation est centrée, ou estime avec `mean="Zero"`) : après construction, vérifie `assert not table["vraie_valeur"].isna().any(), "nom de paramètre non apparié"`. Jamais deux listes écrites à la main dont les longueurs peuvent différer.
+9. **Chaînes LaTeX** dans matplotlib (titres, labels) en raw string `r'...'` pour éviter les séquences d'échappement invalides (`\\s`, `\\h`).
 
 CONTEXTE THÉORIQUE (à respecter pour la formule) :
 {context_text}
@@ -145,5 +121,5 @@ CONTEXTE THÉORIQUE (à respecter pour la formule) :
 FORMAT DE RÉPONSE :
 - Courte intro.
 - Bloc de code (complet, sans placeholder).
-- Courte interprétation.
+- « Ce qu'il faudra regarder » : 2 à 4 puces sur ce que le script calcule et comment lire sa sortie (quel tableau, quel graphique, quel critère). N'annonce AUCUN résultat chiffré ni conclusion (« les estimations sont proches des vraies valeurs ») : le script n'a pas encore été exécuté ; l'interprétation sera faite sur la sortie réelle.
 """

@@ -68,12 +68,39 @@ services:
       - ./data:/app/data
       - ./.files_ela:/app/.files_ela
       - ./public:/app/public
+    networks:
+      - default
+      - sandbox_net
+
+  # --- Bac à sable d'exécution (Atelier Code 2.0) ---
+  # Exécute les scripts Python des étudiants. Joignable uniquement par `app` sur un réseau
+  # interne (aucun accès Internet), non-root, système de fichiers en lecture seule, limites
+  # mémoire/processus. Activer côté app avec SANDBOX_URL=http://sandbox:8080 dans le .env.
+  sandbox:
+    build: ./apps/sandbox
+    container_name: ela-sandbox
+    restart: unless-stopped
+    networks:
+      - sandbox_net
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    environment:
+      - SANDBOX_TIMEOUT=${SANDBOX_TIMEOUT_SECONDS:-30}
+      - SANDBOX_MEMORY_MB=512
+    mem_limit: 1g
+    pids_limit: 128
+    cpus: "1.0"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   # --- Backoffice Admin (Streamlit) — accessible uniquement via Caddy (/admin) ---
   admin:
     build:
       context: .
-      dockerfile: admin/Dockerfile
+      dockerfile: apps/admin/Dockerfile
     container_name: ela-admin
     restart: unless-stopped
     depends_on:
@@ -88,6 +115,11 @@ services:
     command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.baseUrlPath", "admin"]
     volumes:
       - ./data:/app/data
+
+networks:
+  default:
+  sandbox_net:
+    internal: true   # pas de route vers l'extérieur : le bac à sable n'a aucun accès réseau
 
 volumes:
   postgres_data:

@@ -108,21 +108,25 @@ class ScopedRetriever:
 
     # ------------------------------------------------------------------
 
-    def search(self, query: str) -> list[Hit]:
+    def search(self, query: str, *, courses: list[str] | None = None) -> list[Hit]:
         """Hybrid candidates (before reranking), slides first then manuscripts.
 
         Args:
             query: Search query.
+            courses: Restrict the search to these course folders.
 
         Returns:
             Fused candidates with their scores and leg ranks.
         """
         vector = self._embeddings.embed_query(query)
-        hits = self._store.search(query, vector, k=self.k, levels=self.levels, doc_kinds=["slides"])
+        common: dict[str, Any] = {"levels": self.levels}
+        if courses:
+            common["courses"] = list(courses)
+        hits = self._store.search(query, vector, k=self.k, doc_kinds=["slides"], **common)
         if not hits:  # legacy store without doc_kind, or level without slides
-            hits = self._store.search(query, vector, k=self.k, levels=self.levels)
+            hits = self._store.search(query, vector, k=self.k, **common)
         elif self.manuscript_k > 0:
-            extra = self._store.search(query, vector, k=self.manuscript_k, levels=self.levels, doc_kinds=["manuscript"])
+            extra = self._store.search(query, vector, k=self.manuscript_k, doc_kinds=["manuscript"], **common)
             seen = {h.doc.metadata.get("chunk_id") for h in hits}
             hits.extend(h for h in extra if h.doc.metadata.get("chunk_id") not in seen)
         return hits
@@ -138,14 +142,15 @@ class ScopedRetriever:
             out.append(doc)
         return out
 
-    def _select(self, ranked: list[Document]) -> list[Document]:
+    def _select(self, ranked: list[Document], top_n: int | None = None) -> list[Document]:
         """Pick the final ``top_n``: slides first, manuscripts capped, no duplicates.
 
         Typed elements are replaced by their parent slide (when enabled); a
         duplicate freed slot is filled by the next candidate, so the LLM always
         receives ``top_n`` distinct documents when enough candidates exist.
         """
-        if self.top_n <= 0:
+        top_n = self.top_n if top_n is None else top_n
+        if top_n <= 0:
             return self._expand(ranked)
         expanded = self._expand(ranked)
         out: list[Document] = []
@@ -156,12 +161,12 @@ class ScopedRetriever:
                     continue
                 manuscripts += 1
             out.append(doc)
-            if len(out) == self.top_n:
+            if len(out) == top_n:
                 break
-        if len(out) < self.top_n:  # not enough slides: let manuscripts fill the remaining slots
+        if len(out) < top_n:  # not enough slides: let manuscripts fill the remaining slots
             seen = {d.metadata.get("chunk_id") for d in out}
             out.extend(d for d in expanded if d.metadata.get("chunk_id") not in seen)
-            out = out[: self.top_n]
+            out = out[:top_n]
         return out
 
     def _expand(self, docs: list[Document]) -> list[Document]:
@@ -192,23 +197,39 @@ class ScopedRetriever:
             out.append(target)
         return out
 
-    def invoke(self, query: str) -> list[Document]:
+    def invoke(
+        self,
+        query: str,
+        *,
+        courses: list[str] | None = None,
+        chapter: str | None = None,
+        top_n: int | None = None,
+    ) -> list[Document]:
         """Retrieve, rerank and select the documents relevant to ``query``.
 
         Args:
             query: Search query.
+            courses: Restrict the search to these course folders (store filter).
+            chapter: Keep only candidates whose chapter title contains this
+                text (case-insensitive); ignored when nothing matches.
+            top_n: Number of documents to return (defaults to ``RERANK_TOP_N``).
 
         Returns:
             Top documents, scoped to the user's level. Each document carries
             ``score`` (fusion), ``rerank_score`` (when reranked) in its metadata.
         """
-        hits = self.search(query)
+        hits = self.search(query, courses=courses)
         self.last_hits = hits
         docs = []
         for h in hits:
             h.doc.metadata = {**h.doc.metadata, "score": round(h.score, 5)}
             docs.append(h.doc)
-        return self._select(self._rerank(query, docs))
+        if chapter:
+            needle = chapter.strip().lower()
+            narrowed = [d for d in docs if needle in str(d.metadata.get("chapter") or "").lower()]
+            if narrowed:
+                docs = narrowed
+        return self._select(self._rerank(query, docs), top_n)
 
 
 def get_retriever(user_level: str) -> ScopedRetriever:

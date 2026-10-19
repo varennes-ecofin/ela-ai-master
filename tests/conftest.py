@@ -32,6 +32,12 @@ _PREFIXES = (
     "CHUNK_",
     "INGEST_",
     "LOG_",
+    "AGENT_",
+    "PROMPT_",
+    "LANGFUSE_",
+    "EVAL_",
+    "SANDBOX_",
+    "CODE_",
 )
 
 

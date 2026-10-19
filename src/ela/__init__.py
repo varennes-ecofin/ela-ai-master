@@ -1,8 +1,9 @@
 """ELA AI — shared core package.
 
-Phase 0 content: centralised settings (``ela.config``) and the
-provider-agnostic chat-model factory (``ela.llm``). Later phases move
-retrieval, ingestion and the agent into this package.
+Settings (``ela.config``), model factory (``ela.llm``), retrieval and
+ingestion (``ela.retrieval``, ``ela.ingestion``), the agent (``ela.agent``),
+pedagogical generators (``ela.pedagogy``), the conversation engine
+(``ela.engine``) and the evaluation tools (``ela.eval``).
 """
 
-__version__ = "2.0.0a0"
+__version__ = "2.0.0a6"

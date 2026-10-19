@@ -77,17 +77,21 @@ class LocalStorageClient:
     async def upload_file(
         self,
         object_key: str,
-        data: bytes,
+        data: bytes | str,
         mime: str = "application/octet-stream",
         overwrite: bool = True,
     ) -> dict:
-        """Write file to disk and return an HTTP-accessible URL."""
+        """Write file to disk and return an HTTP-accessible URL.
+
+        ``data`` may be text (``cl.Text`` elements such as the sources panel):
+        it is stored as UTF-8.
+        """
         path_parts = object_key.split("/")
         file_path = os.path.join(self.base_path, *path_parts)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         async with aiofiles.open(file_path, "wb") as f:
-            await f.write(data)
+            await f.write(data.encode("utf-8") if isinstance(data, str) else data)
 
         # URL relative pour le frontend (servie par StaticFiles)
         url_key = object_key.replace("\\", "/")
@@ -137,6 +141,19 @@ class LocalStorageClient:
 # Relative URLs like /local_files/... crash aiohttp.
 # This subclass intercepts local URLs and reads from disk.
 # ============================================================
+# Step columns that only move forward (see ``LocalSQLAlchemyDataLayer.create_step``).
+def _keep_if_empty(col: str) -> str:
+    return f'CASE WHEN EXCLUDED."{col}" IS NULL OR EXCLUDED."{col}" = \'\' THEN steps."{col}" ELSE EXCLUDED."{col}" END'
+
+
+_FORWARD_ONLY = {
+    "output": _keep_if_empty("output"),
+    "input": _keep_if_empty("input"),
+    "end": 'COALESCE(EXCLUDED."end", steps."end")',
+    "streaming": 'CASE WHEN steps."end" IS NOT NULL THEN FALSE ELSE EXCLUDED."streaming" END',
+}
+
+
 class LocalSQLAlchemyDataLayer(SQLAlchemyDataLayer):
     """Extended SQLAlchemyDataLayer that handles local file URLs.
 
@@ -144,6 +161,45 @@ class LocalSQLAlchemyDataLayer(SQLAlchemyDataLayer):
     element URL points to our local static route, avoiding the
     aiohttp InvalidUrlClientError on relative URLs.
     """
+
+    @queue_until_user_message()
+    async def create_step(self, step_dict):
+        """Upsert a step without letting a late *create* erase a finished step.
+
+        Chainlit persists ``send()`` and ``update()`` as independent background
+        tasks; when a step finishes quickly (tool call, streamed answer) the
+        initial insert can land after the final update and overwrite its
+        ``output`` / ``end`` with empty values. Those columns only move
+        forward here: an empty incoming value never replaces a stored one.
+        """
+        from chainlit.logger import logger
+
+        await self.update_thread(step_dict["threadId"])
+        if self.show_logger:
+            logger.info(f"SQLAlchemy: create_step, step_id={step_dict.get('id')}")
+
+        step_dict["showInput"] = str(step_dict.get("showInput", "")).lower() if "showInput" in step_dict else None
+        parameters = {
+            key: value
+            for key, value in step_dict.items()
+            if value is not None and not (isinstance(value, dict) and not value)
+        }
+        parameters["metadata"] = json.dumps(step_dict.get("metadata", {}))
+        parameters["generation"] = json.dumps(step_dict.get("generation", {}))
+        columns = ", ".join(f'"{key}"' for key in parameters)
+        values = ", ".join(f":{key}" for key in parameters)
+        updates = ", ".join(
+            f'"{key}" = {_FORWARD_ONLY.get(key, "EXCLUDED." + chr(34) + key + chr(34))}'
+            for key in parameters
+            if key != "id"
+        )
+        query = f"""
+            INSERT INTO steps ({columns})
+            VALUES ({values})
+            ON CONFLICT (id) DO UPDATE
+            SET {updates};
+        """
+        await self.execute_sql(query=query, parameters=parameters)
 
     @queue_until_user_message()
     async def create_element(self, element: Element):
@@ -206,7 +262,7 @@ class LocalSQLAlchemyDataLayer(SQLAlchemyDataLayer):
         # 1. On récupère l'extension d'origine (.png, .jpg)
         _, ext = os.path.splitext(element.name or "")
         if not ext:
-            ext = ".bin"  # Fallback si pas d'extension
+            ext = ".md" if isinstance(content, str) else ".bin"  # texte (panneau de sources) ou binaire
 
         # 2. On génère un nom purement ASCII basé sur l'heure
         # Format : Screenshot_2026-02-09_16-15-30.png
@@ -216,7 +272,7 @@ class LocalSQLAlchemyDataLayer(SQLAlchemyDataLayer):
         file_object_key = f"{user_id}/{element.id}/{safe_filename}"
 
         if not element.mime:
-            element.mime = "application/octet-stream"
+            element.mime = "text/markdown" if isinstance(content, str) else "application/octet-stream"
 
         uploaded_file = await self.storage_provider.upload_file(
             object_key=file_object_key,

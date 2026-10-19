@@ -64,14 +64,19 @@ class FakeStore:
     def get(self, ids):
         return [d for d in self.docs if d.metadata["chunk_id"] in ids]
 
-    def search(self, query, query_vector, *, k, levels=None, doc_kinds=None):
-        self.calls.append({"k": k, "levels": levels, "doc_kinds": doc_kinds})
+    def search(self, query, query_vector, *, k, levels=None, doc_kinds=None, courses=None):
+        call = {"k": k, "levels": levels, "doc_kinds": doc_kinds}
+        if courses:
+            call["courses"] = courses
+        self.calls.append(call)
         words = set(query.lower().split())
         out = []
         for d in self.docs:
             if levels and d.metadata["level"] not in levels:
                 continue
             if doc_kinds and d.metadata["doc_kind"] not in doc_kinds:
+                continue
+            if courses and d.metadata.get("course") not in courses:
                 continue
             overlap = len(words & set(d.page_content.lower().split()))
             if overlap:
@@ -204,3 +209,25 @@ def test_selection_caps_manuscripts_and_refills_after_dedupe(monkeypatch: pytest
     # element + its parent in the ranked list count once; the slot is refilled with another slide
     ids = [d.metadata["chunk_id"] for d in out]
     assert len(set(ids)) == 3 and "uts1-def" not in ids
+
+
+def test_invoke_course_chapter_and_top_n_filters(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RERANK_TOP_N", "5")
+    get_settings.cache_clear()
+    corpus = [
+        _doc("a", "M1", text="stationnarité ADF"),
+        _doc("b", "M1", text="stationnarité KPSS"),
+        _doc("c", "M1", text="stationnarité PP"),
+    ]
+    corpus[0].metadata.update(course="UTS", chapter="Chapitre 2 : racines unitaires")
+    corpus[1].metadata.update(course="UTS", chapter="Chapitre 3 : tests")
+    corpus[2].metadata.update(course="MTS", chapter="Chapitre 1")
+    store = FakeStore(corpus)
+    r = ScopedRetriever("M1", store=store, embeddings=FakeEmb(), reranker=None)
+    assert {d.metadata["chunk_id"] for d in r.invoke("stationnarité")} == {"a", "b", "c"}
+    assert {d.metadata["chunk_id"] for d in r.invoke("stationnarité", courses=["UTS"])} == {"a", "b"}
+    assert store.calls[-1]["courses"] == ["UTS"]
+    assert [d.metadata["chunk_id"] for d in r.invoke("stationnarité", chapter="racines")] == ["a"]
+    # unknown chapter: filter ignored rather than returning nothing
+    assert len(r.invoke("stationnarité", chapter="inexistant")) == 3
+    assert len(r.invoke("stationnarité", top_n=1)) == 1

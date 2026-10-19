@@ -20,12 +20,13 @@ backoffice_deploy.txt*
 Other/
 
 # --- Données runtime : cours LaTeX (propriété intellectuelle), base vectorielle,
-#     modèles téléchargés (reranker)... Tout `data/` reste hors du dépôt.
+#     modèles téléchargés (reranker), exports de chunks... Tout `data/` reste hors du dépôt.
 data/
 chroma_db/
 latex/
 .files_ela/
 .files/
+*.jsonl
 
 # --- Chainlit : fichiers générés (on versionne uniquement config.toml) ---
 .chainlit/*

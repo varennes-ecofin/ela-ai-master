@@ -221,6 +221,60 @@ class Settings(BaseSettings):
     rerank_cache_dir: str = Field(default="./data/flashrank", description="Where FlashRank stores its model.")
 
     # ------------------------------------------------------------------
+    # Agent (Phase 3)
+    # ------------------------------------------------------------------
+    prompt_version: str = Field(default="v1", description="Version of the prompt files in ela/agent/prompts/.")
+    agent_max_model_calls: int = Field(default=8, description="Model calls allowed per student message.")
+    agent_max_tool_calls: int = Field(default=8, description="Tool calls allowed per student message (all tools).")
+    agent_max_searches: int = Field(default=4, description="search_course calls allowed per student message.")
+    agent_search_k: int = Field(default=5, description="Default number of passages returned by search_course.")
+    agent_search_k_max: int = Field(default=8, description="Upper bound of the k argument of search_course.")
+    agent_outline_max_chars: int = Field(default=6000, description="Character budget of get_course_outline.")
+    agent_summary_enabled: bool = Field(
+        default=True, description="Summarise the turns that leave the history window (one model call, cached)."
+    )
+
+    # ------------------------------------------------------------------
+    # Tracing (Langfuse, optional)
+    # ------------------------------------------------------------------
+    langfuse_public_key: SecretStr | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_host: str | None = Field(default=None, description="Langfuse base URL (self-hosted); cloud when empty.")
+    langfuse_send_user_id: bool = Field(
+        default=False, description="Attach the student identifier to traces (off: anonymous traces)."
+    )
+
+    # ------------------------------------------------------------------
+    # Code sandbox (Atelier Code 2.0, optional)
+    # ------------------------------------------------------------------
+    sandbox_url: str | None = Field(
+        default=None,
+        description="Base URL of the sandbox service (apps/sandbox); empty = code is generated but never executed.",
+    )
+    sandbox_timeout_seconds: float = Field(default=30.0, description="Wall-clock limit of one execution.")
+    sandbox_daily_quota: int = Field(default=10, description="Executions per student and per day (0 = unlimited).")
+    code_max_tokens: int = Field(
+        default=4096, description="Completion budget for script generation, fix and interpretation."
+    )
+    code_reasoning_effort: ReasoningEffort = Field(
+        default="medium", description="Reasoning effort for the Atelier Code (generation, fix, interpretation)."
+    )
+    code_auto_fix: bool = Field(
+        default=True, description="On a failed run, fix the script once and re-run before showing the error."
+    )
+
+    # ------------------------------------------------------------------
+    # Evaluation (ela-eval answer)
+    # ------------------------------------------------------------------
+    eval_judge_model: str | None = Field(
+        default=None,
+        description="Model used as LLM judge by `ela-eval answer` (defaults to LLM_MODEL_CHAT on LLM_PROVIDER).",
+    )
+    eval_judge_reasoning_effort: ReasoningEffort = Field(
+        default="medium", description="Reasoning effort of the judge (accuracy matters more than latency here)."
+    )
+
+    # ------------------------------------------------------------------
     # Normalisation of raw environment values
     # ------------------------------------------------------------------
     @field_validator("*", mode="before")
@@ -296,6 +350,11 @@ class Settings(BaseSettings):
         """Fallback model name, or ``None`` when disabled (``LLM_MODEL_FALLBACK=none``)."""
         value = (self.llm_model_fallback or "").strip()
         return None if value.lower() in {"", "none", "off", "false"} else value
+
+    @property
+    def sandbox_enabled(self) -> bool:
+        """Whether student code may be executed (``SANDBOX_URL`` set)."""
+        return bool(self.sandbox_url and self.sandbox_url.strip())
 
     @property
     def reasoning_effort(self) -> str | None:

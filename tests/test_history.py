@@ -60,3 +60,38 @@ def test_window_never_starts_with_assistant():
 def test_defaults_come_from_settings():
     out = bounded_history(_thread(50))
     assert len(out) == 24  # HISTORY_MAX_TURNS default = 12 exchanges
+
+
+def test_split_history_returns_dropped_prefix():
+    from ela.history import split_history
+
+    turns = _thread(5)
+    dropped, kept = split_history(turns, max_turns=2, max_chars=10_000)
+    assert dropped == turns[:6] and kept == turns[6:]
+    assert split_history([], max_turns=2) == ([], [])
+
+
+async def test_summarizer_updates_only_when_new_turns_drop():
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+
+    from ela.history import HistorySummarizer, format_turns
+
+    llm = GenericFakeChatModel(messages=iter(["Résumé v1", "Résumé v2"]))
+    s = HistorySummarizer(llm)
+    turns = _thread(3)
+    assert await s.update(turns[:2]) == "Résumé v1" and s.covered == 2
+    assert await s.update(turns[:2]) == "Résumé v1"  # nothing new: no model call
+    assert await s.update(turns[:4]) == "Résumé v2" and s.covered == 4
+    assert format_turns(turns[:2]).startswith("Étudiant : q0\n\nELA : a0")
+
+
+async def test_summarizer_keeps_previous_summary_on_failure():
+    from ela.history import HistorySummarizer
+
+    class Broken:
+        async def ainvoke(self, messages):
+            raise RuntimeError("down")
+
+    s = HistorySummarizer(Broken())
+    s.summary, s.covered = "ancien", 1
+    assert await s.update(_thread(2)) == "ancien" and s.covered == 1

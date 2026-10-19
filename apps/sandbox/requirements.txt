@@ -1,0 +1,7 @@
+# Packages available to the student scripts (kept in sync with the Dockerfile)
+numpy==2.2.6
+pandas==2.3.3
+scipy==1.15.3
+statsmodels==0.14.5
+matplotlib==3.10.6
+arch==7.2.0

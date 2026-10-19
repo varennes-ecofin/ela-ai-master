@@ -106,11 +106,13 @@ class ChunkStore(Protocol):
         k: int,
         levels: list[str] | None = None,
         doc_kinds: list[str] | None = None,
+        courses: list[str] | None = None,
     ) -> list[Hit]:
         """Hybrid search (vector + lexical, RRF-fused) restricted to ``levels``.
 
         Each leg returns its ``k`` best; the union (up to ``2k`` candidates) is
         fused so that a document found by only one leg still reaches the reranker.
+        ``courses`` restricts the search to the given course folders.
         """
         ...
 
@@ -298,6 +300,7 @@ class PgVectorStore:
         k: int,
         levels: list[str] | None = None,
         doc_kinds: list[str] | None = None,
+        courses: list[str] | None = None,
     ) -> list[Hit]:
         filters = []
         params: dict[str, Any] = {
@@ -315,6 +318,9 @@ class PgVectorStore:
         if doc_kinds:
             filters.append("doc_kind = ANY(:kinds)")
             params["kinds"] = list(doc_kinds)
+        if courses:
+            filters.append("course = ANY(:courses)")
+            params["courses"] = list(courses)
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
         cols = ", ".join(f"c.{c}" for c in _COLUMNS)
         sql = text(
@@ -454,12 +460,14 @@ class ChromaStore:
     # ---- reads ----
 
     @staticmethod
-    def _where(levels: list[str] | None, doc_kinds: list[str] | None) -> dict | None:
+    def _where(levels: list[str] | None, doc_kinds: list[str] | None, courses: list[str] | None = None) -> dict | None:
         clauses = []
         if levels:
             clauses.append({"level": {"$in": list(levels)}})
         if doc_kinds:
             clauses.append({"doc_kind": {"$in": list(doc_kinds)}})
+        if courses:
+            clauses.append({"course": {"$in": list(courses)}})
         if not clauses:
             return None
         return clauses[0] if len(clauses) == 1 else {"$and": clauses}
@@ -485,8 +493,8 @@ class ChromaStore:
             for d, m in zip(data["documents"], data["metadatas"], strict=False)
         ]
 
-    def _bm25(self, levels: list[str] | None, doc_kinds: list[str] | None):
-        key = (tuple(levels or ()), tuple(doc_kinds or ()))
+    def _bm25(self, levels: list[str] | None, doc_kinds: list[str] | None, courses: list[str] | None = None):
+        key = (tuple(levels or ()), tuple(doc_kinds or ()), tuple(courses or ()))
         if key not in self._bm25_cache:
             with self._lock:
                 if key not in self._bm25_cache:
@@ -495,6 +503,8 @@ class ChromaStore:
                     docs = self.all_documents(levels)
                     if doc_kinds:
                         docs = [d for d in docs if d.metadata.get("doc_kind") in set(doc_kinds)]
+                    if courses:
+                        docs = [d for d in docs if d.metadata.get("course") in set(courses)]
                     tokens = [_tokenize(d.page_content) for d in docs]
                     self._bm25_cache[key] = (BM25Okapi(tokens) if tokens else None, docs)
         return self._bm25_cache[key]
@@ -507,6 +517,7 @@ class ChromaStore:
         k: int,
         levels: list[str] | None = None,
         doc_kinds: list[str] | None = None,
+        courses: list[str] | None = None,
     ) -> list[Hit]:
         if self.count() == 0:
             return []
@@ -515,7 +526,7 @@ class ChromaStore:
             "n_results": min(k, self.count()),
             "include": ["documents", "metadatas"],
         }
-        where = self._where(levels, doc_kinds)
+        where = self._where(levels, doc_kinds, courses)
         if where:
             kwargs["where"] = where
         res = self._collection.query(**kwargs)
@@ -526,7 +537,7 @@ class ChromaStore:
             vec_ids.append(i)
 
         lex_ids: list[str] = []
-        bm25, corpus = self._bm25(levels, doc_kinds)
+        bm25, corpus = self._bm25(levels, doc_kinds, courses)
         if bm25 is not None:
             scores = bm25.get_scores(_tokenize(query))
             order = sorted(range(len(corpus)), key=lambda i: scores[i], reverse=True)[:k]

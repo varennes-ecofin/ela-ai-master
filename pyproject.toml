@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ela-ai"
-version = "2.0.0a3"
+version = "2.0.0a11"
 description = "ELA — Econometrics Learning Assistant (RAG chatbot for master-level econometrics courses)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
@@ -14,10 +14,12 @@ authors = [{ name = "Gilles de Truchis" }]
 dependencies = [
   # Chat front-end
   "chainlit==2.12.0",
-  # LangChain
+  # LangChain (agent: langchain + langgraph)
+  "langchain==1.4.6",
   "langchain-core==1.6.10",
   "langchain-huggingface==1.2.3",
   "langchain-openai==1.7.1",
+  "langgraph==1.2.16",
   # Vector store (pgvector via SQLAlchemy; Chroma as fallback), embeddings, reranking
   "chromadb==1.5.9",
   "sentence-transformers==5.7.0",
@@ -46,6 +48,9 @@ admin = [
   "pandas==2.3.3",
   "plotly==6.9.0",
 ]
+tracing = [
+  "langfuse>=4,<6",
+]
 dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
@@ -65,6 +70,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "ela.db.migrations" = ["script.py.mako", "versions/*.py"]
+"ela.agent.prompts" = ["*.md"]
 
 [tool.ruff]
 line-length = 120
@@ -90,8 +96,10 @@ ignore = [
 "src/ela/retrieval/embeddings.py" = ["D102"]
 "src/ela/cli/*" = ["E501"]
 "src/ela/prompts.py" = ["E501", "W291"]
-"src/ela/guard.py" = ["E501"]
+"src/ela/eval/legacy_pipeline.py" = ["E501"]  # frozen Phase-2 prompts
+"src/ela/agent/tools.py" = ["E501"]           # French messages returned to the model
 "apps/chat/app.py" = ["D103"]  # Chainlit callbacks are self-describing
+"apps/sandbox/server.py" = ["D102"]  # http.server handler methods
 "src/ela/db/migrations/*" = ["D103"]
 
 [tool.pytest.ini_options]

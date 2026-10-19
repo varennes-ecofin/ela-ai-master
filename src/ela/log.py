@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import warnings
 from datetime import UTC, datetime
 
 from ela.config import get_settings
@@ -58,5 +59,9 @@ def configure_logging(level: str | None = None, json_lines: bool | None = None) 
     # Quieten chatty third-party loggers
     for name in ("httpx", "httpcore", "openai", "chromadb", "sentence_transformers", "urllib3"):
         logging.getLogger(name).setLevel(max(logging.WARNING, root.level))
+
+    # langchain-openai stores the parsed structured output in a message field its
+    # serializer declares as None; harmless, but noisy at every quiz / judge call.
+    warnings.filterwarnings("ignore", message=".*PydanticSerializationUnexpectedValue.*", category=UserWarning)
 
     _CONFIGURED = True

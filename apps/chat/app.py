@@ -6,15 +6,15 @@ live there)::
     chainlit run apps/chat/app.py -w
 
 Responsibilities of this module: authentication, session setup, message
-routing (chat / quiz / code workshop) and UI. Everything else lives in the
-``ela`` package (retrieval, engine, database, configuration).
+routing (chat / quiz / exercise / code workshop). The rendering of the
+agent events lives in ``ui.py``; everything else in the ``ela`` package
+(agent, retrieval, database, configuration).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import sys
 
 # --- Windows: asyncpg requires the selector event loop ---
@@ -22,6 +22,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import chainlit as cl
+import ui
 from chainlit.types import ThreadDict
 from data_layer import LocalSQLAlchemyDataLayer, LocalStorageClient
 
@@ -30,10 +31,9 @@ from ela.db import threads as threads_db
 from ela.db import users as users_db
 from ela.db.users import UserProfile
 from ela.engine import ElaEngine
-from ela.history import bounded_history, to_turns
+from ela.history import to_turns
 from ela.llm import SUPPORTED_IMAGE_MIMES
 from ela.log import configure_logging
-from ela.mathfmt import normalize_math
 from ela.retrieval import resources
 
 configure_logging()
@@ -81,6 +81,7 @@ async def _init_session() -> None:
     cl.user_session.set("user_profile", profile)
 
     level = profile.level if profile else "ALL"
+    cl.user_session.set("quiz_level", level)
     cl.user_session.set("ela_engine", ElaEngine(user_level=level))
     logger.info("Session ready: user=%s level=%s", user.identifier if user else "-", level)
 
@@ -100,6 +101,11 @@ def _engine() -> ElaEngine:
     return cl.user_session.get("ela_engine")
 
 
+def _user_id() -> str | None:
+    user = cl.context.session.user
+    return user.identifier if user else None
+
+
 # ============================================================
 # STARTERS & AUTHOR NAMES
 # ============================================================
@@ -112,6 +118,9 @@ def rename(orig_author: str):
 async def set_starters():
     return [
         cl.Starter(label="Générer un quiz", message="/start_quiz", icon="/public/quiz.svg"),
+        cl.Starter(label="Faire un exercice", message="/exercise", icon="/public/quiz.svg"),
+        cl.Starter(label="Fiche de révision", message="/fiche", icon="/public/quiz.svg"),
+        cl.Starter(label="Mon bilan", message="/bilan", icon="/public/quiz.svg"),
         cl.Starter(label="Atelier Code", message="/code_workshop", icon="/public/terminal.svg"),
     ]
 
@@ -137,15 +146,35 @@ async def main(message: cl.Message):
             ).send()
             return
 
-    # 1. Special commands
+    # 1. Special commands (a command cancels a pending « /fiche » picker)
+    if message.content.startswith("/"):
+        cl.user_session.set("sheet_mode", None)
     if message.content == "/start_quiz":
         await threads_db.rename_thread(cl.context.session.thread_id, "🎓 Nouveau Quiz")
         await cl.Message(
-            content="🎓 **Mode Quiz activé !**\nSur quel concept du cours "
-            "voulez-vous vous tester ? (ex: *MCO, Séries Temporelles, "
-            "Tests de racine unitaire...*)"
+            content="🎓 **Mode Quiz activé !**\nSur quel concept du cours voulez-vous vous tester ? "
+            "(ex: *stationnarité, test ADF, modèle GARCH...*) — précisez le nombre de questions si vous voulez "
+            "(ex: *test ADF, 5 questions* ; 3 par défaut)"
         ).send()
         cl.user_session.set("quiz_mode", "waiting_topic")
+        return
+
+    if message.content == "/bilan":
+        await ui.show_report(_user_id())
+        return
+
+    if message.content == "/fiche":
+        await threads_db.rename_thread(cl.context.session.thread_id, "📄 Fiche de révision")
+        await ui.start_sheet_picker(engine)
+        return
+
+    if message.content == "/exercise":
+        await threads_db.rename_thread(cl.context.session.thread_id, "✏️ Exercice")
+        await cl.Message(
+            content="✏️ **Mode Exercice activé !**\nSur quelle notion du cours voulez-vous un exercice ? "
+            "(ex: *prévision d'un AR(1), test de cointégration, VaR...*)"
+        ).send()
+        cl.user_session.set("exercise_mode", "waiting_topic")
         return
 
     if message.content == "/code_workshop":
@@ -162,13 +191,25 @@ async def main(message: cl.Message):
         ).send()
         return
 
-    # 2. Quiz state machine
+    # 2. Quiz / exercise state machines
     quiz_mode = cl.user_session.get("quiz_mode")
     if quiz_mode == "waiting_topic":
         await _start_quiz(engine, message.content)
         return
     if quiz_mode == "active":
         await cl.Message(content="💡 Utilisez les boutons ci-dessus pour répondre !").send()
+        return
+    exercise_mode = cl.user_session.get("exercise_mode")
+    if exercise_mode == "waiting_topic":
+        await _start_exercise(engine, message.content)
+        return
+    if exercise_mode == "awaiting_step":
+        await ui.check_student_step(engine, message.content)
+        return
+    if cl.user_session.get("sheet_mode") == "waiting":
+        await ui.handle_sheet_request(
+            engine, message.content, user_id=_user_id(), thread_id=cl.context.session.thread_id
+        )
         return
 
     # 3. Code workshop
@@ -197,113 +238,108 @@ async def main(message: cl.Message):
         ).send()
         return
 
-    # 5. Bounded history + streaming answer
-    history = bounded_history(to_turns(cl.chat_context.get(), exclude_id=message.id))
-
-    msg = cl.Message(content="", author="ELA AI 🤖")
-    await msg.send()
-    async for token in engine.ask(question=message.content, chat_history=history, images=images):
-        await msg.stream_token(token)
-    # KaTeX only understands $...$ / $$...$$: rewrite \(..\), \[..\] and bare environments
-    msg.content = normalize_math(msg.content)
-    await msg.update()
+    # 5. Agent turn (steps, sources panel, streaming) — history is bounded by the engine
+    history = to_turns(cl.chat_context.get(), exclude_id=message.id)
+    await ui.run_turn(
+        engine,
+        message.content,
+        history,
+        images,
+        session_id=cl.context.session.thread_id,
+        user_id=_user_id(),
+    )
 
 
 # ============================================================
 # QUIZ
 # ============================================================
-_LETTERS = ["A", "B", "C", "D"]
-_OPTION_PREFIX = re.compile(r"^[A-D0-9][\)\.]\s*")
-
-
-async def _start_quiz(engine: ElaEngine, topic: str) -> None:
-    """Generate the quiz for ``topic`` and ask the first question."""
+async def _start_quiz(engine: ElaEngine, request: str) -> None:
+    """Generate the quiz for the requested topic (« sujet, 5 questions ») and ask the first question."""
+    topic, n_questions = ui.parse_quiz_request(request)
     safe_topic = (topic[:25] + "..") if len(topic) > 25 else topic
     await threads_db.rename_thread(cl.context.session.thread_id, f"🎓 Quiz : {safe_topic}")
-
-    msg_wait = cl.Message(content=f"🔍 Analyse de vos cours sur **{topic}** et génération des questions...")
-    await msg_wait.send()
-
-    quiz_data = await engine.generate_quiz(topic, num_questions=3)
-
-    if quiz_data and isinstance(quiz_data[0], dict) and quiz_data[0].get("error") == "domain":
-        msg_wait.content = "⚠️ Ce sujet sort du cadre du cours (séries temporelles, économétrie financière)."
-        await msg_wait.update()
-        cl.user_session.set("quiz_mode", None)
-        return
-    if not quiz_data:
-        msg_wait.content = "⚠️ Je n'ai pas trouvé assez d'informations dans le cours pour ce sujet."
-        await msg_wait.update()
-        cl.user_session.set("quiz_mode", None)
-        return
-
-    cl.user_session.set("quiz_data", quiz_data)
-    cl.user_session.set("quiz_index", 0)
-    cl.user_session.set("quiz_score", 0)
-    cl.user_session.set("quiz_mode", "active")
-    await _ask_next_question()
+    cl.user_session.set("quiz_mode", None)
+    await ui.launch_quiz(
+        engine,
+        topic,
+        n=n_questions,
+        difficulty=ui.current_difficulty(),
+        user_id=_user_id(),
+        thread_id=cl.context.session.thread_id,
+        intro=f"🔍 Analyse de vos cours sur **{topic}** et génération des questions...",
+    )
 
 
-async def _ask_next_question() -> None:
-    """Display the current question with one action button per option."""
-    quiz_data = cl.user_session.get("quiz_data")
-    index = cl.user_session.get("quiz_index")
+@cl.action_callback("quiz_explain")
+async def on_quiz_explain(action: cl.Action):
+    history = to_turns(cl.chat_context.get())
+    await ui.explain_question(action, _engine(), history, session_id=cl.context.session.thread_id, user_id=_user_id())
 
-    if index >= len(quiz_data):
-        score = cl.user_session.get("quiz_score")
-        await cl.Message(
-            content=f"🏆 **Quiz terminé !**\nVotre score : {score}/{len(quiz_data)}\n\n"
-            "Posez une autre question ou tapez `/start_quiz` pour recommencer."
-        ).send()
-        cl.user_session.set("quiz_mode", None)
-        return
 
-    q = quiz_data[index]
-    actions = []
-    for i, raw_option in enumerate(q["options"][:4]):
-        clean_option = _OPTION_PREFIX.sub("", raw_option).strip()
-        actions.append(
-            cl.Action(
-                name="quiz_answer",
-                payload={"value": str(i)},
-                label=f"{_LETTERS[i]}) {clean_option}",
-                tooltip="Cliquez pour choisir",
-            )
-        )
-    await cl.Message(
-        content=f"✅ **Question {index + 1}/{len(quiz_data)}**\n\n{q['question']}",
-        actions=actions,
-    ).send()
+@cl.action_callback("quiz_retry_errors")
+async def on_quiz_retry_errors(action: cl.Action):
+    await ui.retry_errors(action, _engine(), user_id=_user_id(), thread_id=cl.context.session.thread_id)
+
+
+@cl.action_callback("quiz_retry")
+async def on_quiz_retry(action: cl.Action):
+    await ui.retry_quiz(action, _engine(), user_id=_user_id(), thread_id=cl.context.session.thread_id)
 
 
 @cl.action_callback("quiz_answer")
 async def on_quiz_answer(action: cl.Action):
-    """Grade the clicked answer and move to the next question."""
-    quiz_data = cl.user_session.get("quiz_data")
-    index = cl.user_session.get("quiz_index")
-    score = cl.user_session.get("quiz_score")
+    await ui.answer_quiz(action)
 
-    user_idx = int(action.payload["value"])
-    current_q = quiz_data[index]
-    correct_idx = current_q["correct_index"]
 
-    if user_idx == correct_idx:
-        score += 1
-        cl.user_session.set("quiz_score", score)
-        feedback = f"✅ **Correct !**\n_{current_q['explanation']}_"
-    else:
-        clean_correct = _OPTION_PREFIX.sub("", current_q["options"][correct_idx]).strip()
-        feedback = (
-            f"❌ **Incorrect.**\nLa bonne réponse était "
-            f"**{_LETTERS[correct_idx]}** : {clean_correct}.\n\n"
-            f"_{current_q['explanation']}_"
-        )
+# ============================================================
+# EXERCISE
+# ============================================================
+async def _start_exercise(engine: ElaEngine, topic: str) -> None:
+    """Generate an exercise for ``topic`` and display it."""
+    safe_topic = (topic[:25] + "..") if len(topic) > 25 else topic
+    await threads_db.rename_thread(cl.context.session.thread_id, f"✏️ Exercice : {safe_topic}")
+    cl.user_session.set("exercise_mode", None)
+    await ui.launch_exercise(engine, topic, user_id=_user_id(), thread_id=cl.context.session.thread_id)
 
-    await action.remove()
-    await cl.Message(content=feedback).send()
-    cl.user_session.set("quiz_index", index + 1)
-    await asyncio.sleep(1)
-    await _ask_next_question()
+
+@cl.action_callback("report_suggestion")
+async def on_report_suggestion(action: cl.Action):
+    await ui.follow_suggestion(action, _engine(), user_id=_user_id(), thread_id=cl.context.session.thread_id)
+
+
+@cl.action_callback("sheet_course")
+async def on_sheet_course(action: cl.Action):
+    await ui.pick_sheet_course(action, _engine())
+
+
+@cl.action_callback("sheet_chapter")
+async def on_sheet_chapter(action: cl.Action):
+    await ui.pick_sheet_chapter(action, _engine(), user_id=_user_id(), thread_id=cl.context.session.thread_id)
+
+
+@cl.action_callback("code_run")
+async def on_code_run(action: cl.Action):
+    await ui.run_last_code(action, _engine(), user_id=_user_id(), thread_id=cl.context.session.thread_id)
+
+
+@cl.action_callback("code_fix")
+async def on_code_fix(action: cl.Action):
+    await ui.fix_last_code(action, _engine())
+
+
+@cl.action_callback("exercise_step")
+async def on_exercise_step(action: cl.Action):
+    await ui.ask_for_step(action)
+
+
+@cl.action_callback("exercise_hint")
+async def on_exercise_hint(action: cl.Action):
+    await ui.reveal_hint(action)
+
+
+@cl.action_callback("exercise_solution")
+async def on_exercise_solution(action: cl.Action):
+    await ui.reveal_solution(action)
 
 
 # ============================================================
@@ -326,9 +362,4 @@ async def _run_code_workshop(engine: ElaEngine, topic: str) -> None:
     """Generate the example script for ``topic`` in the chosen language."""
     language = cl.user_session.get("code_lang_choice") or "Python"
     await threads_db.rename_thread(cl.context.session.thread_id, f"💻 Code : {topic}")
-
-    msg_load = cl.Message(content=f"Génération du script **{language}** pour **{topic}**...")
-    await msg_load.send()
-    msg_load.content = normalize_math(await engine.generate_code(topic, language))
-    await msg_load.update()
-    cl.user_session.set("code_mode", None)
+    await ui.launch_code(engine, topic, language)

@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 1.3 — 2026-10-13
+> **Version** : 1.9 — 2026-10-18
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phases 0 et 1 validées (13/10) · Phase 2 en cours (jeu d'évaluation livré, mesure « avant » à faire)
+> **Statut** : Phases 0 à 3 validées (18/10) · Phase 4 en cours : 4a (Quiz 2.0) et 4b (socratique) validés, 4c (suivi) validé (+ correctifs quiz du 18/10), 4d (fiches + suggestions) validé, 4e (Atelier Code 2.0, exécution sandboxée) livré pour test — à valider sur le VPS
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -205,36 +205,39 @@ Tâches :
 
 Critères d'acceptation : hit@5 et MRR en hausse significative sur le jeu de test (objectif indicatif : hit@5 ≥ 0,85) ; ajout d'un fichier `.tex` ⇒ seuls ses chunks sont ré-encodés, visible en < 1 min sur le VPS via ILaaS ; démonstration « ajout d'un cours en direct » possible.
 
-### Phase 3 — ELA agentique (5–6 sessions)
+### Phase 3 — ELA agentique (5–6 sessions) — *validée le 18/10/2026*
 
 **Objectif** : remplacer la chaîne fixe `RAGGuard → prompt → LLM` par un agent qui décide quand et comment chercher.
 
-Tâches :
-1. `langchain.agents.create_agent` (LangGraph) avec les **outils** :
-   - `search_course(query, course=None, chapter=None, k=8)` — hybride + rerank, renvoie chunks + métadonnées ;
-   - `get_course_outline(course)` — table des matières (chapitres/sections/titres de slides) ;
-   - `get_slide(course, slide_title | chunk_id)` — lecture exacte d'une slide citée ;
-   - `generate_quiz(topic, n, difficulty)` — sortie structurée Pydantic, LaTeX autorisé ;
-   - `generate_exercise(topic)` — énoncé + indices + corrigé (révélation progressive) ;
-   - (option) `run_python(code)` — voir phase 4.
-2. **Middleware** : limite d'appels modèle/outils ; retry + `ModelFallbackMiddleware` ; `SummarizationMiddleware` (historique) ; sélection dynamique du modèle (vision) ; garde-fou de domaine léger en `before_model` ; injection du niveau M1/M2 et du profil pédagogique dans le system prompt.
-3. **UI Chainlit** : chaque appel d'outil affiché en `cl.Step` (« Recherche dans UTS_C2 → 5 slides ») ; **sources en panneau latéral** (cours, chapitre, titre de slide, extrait rendu en LaTeX) ; vérification que chaque `[Source: …]` cité correspond à un chunk réellement récupéré, sinon correction.
-4. Suppression de `rag_guard.py` ; prompts versionnés dans `ela/agent/prompts/`.
-5. Traçage **Langfuse** (auto-hébergé dans le compose, optionnel) : coût, latence, chaîne d'outils, feedbacks reliés aux traces.
-6. Évaluation de bout en bout sur le jeu de test (fidélité, taux de citation correcte, latence moyenne).
+Décisions prises le 17/10 : citations numérotées `[S1]`, `[S2]`… reliées au panneau de sources (+ `[Connaissances générales]` pour le hors-cours) ; agent **sans état** reconstruit depuis l'historique Chainlit (fenêtre bornée + résumé en session, pas de checkpointer LangGraph avant la phase 4) ; garde-fou de domaine **sans appel LLM supplémentaire** (prompt + contrôle mécanique des citations), pré-classifieur seulement si l'évaluation montre des fuites ; Langfuse optionnel hors compose, jamais de données étudiantes vers le cloud en production ; images **transcrites** par le modèle vision puis traitées par l'agent texte (aucune dépendance au tool calling du modèle vision) ; quiz avec LaTeX dans question/explication et options en texte brut ; exercice minimal Indice/Solution.
 
-Critères d'acceptation : question multi-étapes (« compare le test ADF du chapitre 2 au KPSS ») résolue avec 2 recherches visibles ; latence médiane ≤ celle de l'actuel malgré l'agentivité ; aucune citation fantôme sur le jeu de test ; refus propre hors domaine.
+Tâches :
+1. ✅ **Agent** `langchain.agents.create_agent` (`langchain` 1.4.6 + `langgraph` 1.2.16), `src/ela/agent/` : `agent.py` (graphe compilé partagé par le processus), `context.py` (`TurnContext` : niveau, registre de sources, quiz/exercice du tour), `tools.py`, `outline.py`, `citations.py`, `events.py`, `vision.py`, `middleware.py`, `prompts/` (`system_v1.md`, `quiz_v1.md`, `exercise_v1.md`, `transcribe_v1.md`, `summary_v1.md`, `PROMPT_VERSION`).
+   - `search_course(query, course=None, chapter=None, k)` — retriever hybride scopé au niveau (filtre cours côté store, chapitre sur les candidats), extraits étiquetés `[S1]`… dans un `SourceRegistry` par tour ;
+   - `get_course_outline(course=None)` — plan chapitre › section › slides (ou liste des cours), construit depuis le store et mis en cache par génération ;
+   - `get_slide(source_id | slide_title [, course])` — relecture d'un extrait ou d'une slide du plan ;
+   - `generate_quiz(topic, n, difficulty)` / `generate_exercise(topic)` — sorties structurées Pydantic (`ela/pedagogy/`), laissées dans le contexte du tour pour l'UI ;
+   - décomposition des questions composées : consigne de prompt (une recherche par notion) + appels d'outils parallèles.
+2. ✅ **Middleware** : prompt système dynamique (niveau M1/M2, cours visibles, résumé d'historique) ; `ModelFallbackMiddleware` (modèle de secours) ; `ModelCallLimitMiddleware` et `ToolCallLimitMiddleware` (global, `search_course`, quiz, exercice) ; `ToolErrorMiddleware`. Résumé d'historique maison (`HistorySummarizer`, un appel modèle quand des tours sortent de la fenêtre, mis en cache par session). Les retries réseau restent dans le client `ChatOpenAI`.
+3. ✅ **UI Chainlit** (`apps/chat/ui.py`) : un `cl.Step` par appel d'outil (« 🔎 Recherche : « test ADF » → 5 extrait(s) »), réponse streamée, **panneau de sources** = éléments latéraux nommés `S1`, `S2`… (cours › chapitre › slide, score, extrait rendu en KaTeX) vers lesquels les citations de la réponse pointent ; citations fantômes retirées avant affichage ; quiz et exercice (boutons Indice / Solution) déclenchés par l'agent ou par `/start_quiz`, `/exercise`.
+4. ✅ `guard.py` supprimé du chemin de production ; la chaîne de la phase 2 est **gelée** dans `ela/eval/legacy_pipeline.py` uniquement pour la mesure « avant » (`ela-eval answer --engine legacy`), à supprimer après comparaison.
+5. ✅ Traçage **Langfuse** optionnel (`ela/tracing.py`, variables `LANGFUSE_*`, extra `pip install -e ".[tracing]"`), désactivé par défaut, hors `docker-compose` (Langfuse v3 auto-hébergé exige ClickHouse/Redis/MinIO).
+6. ✅ **Évaluation de bout en bout** `ela-eval answer` (`ela/eval/answer.py`, `judge.py`) : latence médiane/p90, recherches et appels d'outils par question, citations valides / fantômes, fidélité par juge LLM (`answer_points`), refus hors domaine, étiquetage hors corpus, multi-étapes avec ≥ 2 recherches ; `ela-eval compare` étendu aux rapports `answer`. ✅ **Mesures du 18/10** (71 questions, Cerebras gpt-oss-120b, juge gpt-oss-120b, effort medium) — chaîne fixe → agent : fidélité 0,80 → **0,86**, citations fantômes 3 → **0**, refus indus 9 → **0** (les 9 questions du cours *Duration_Models* étaient refusées à tort par l'ancien garde-fou), refus hors domaine 1,00 → 1,00, hors corpus étiqueté 0,33 → 0,67, latence médiane 1,10 s → **1,09 s** (p90 1,62 → 1,49 s). Point faible : les questions multi-étapes du jeu (UTS-17, MTS-05, HFE-15) sont résolues en une seule recherche (fidélité 1,00 malgré tout) ; `multihop_two_searches_rate` = 0 — à retravailler via un `system_v2.md`. Bugs corrigés après le test en situation : colonne `steps.autoCollapse` manquante (migration 0003, réponses invisibles à la reprise des fils), persistance des éléments texte, mélange des options de quiz, délimiteurs `$$` multi-lignes.
+
+Critères d'acceptation : question multi-étapes résolue avec 2 recherches visibles (atteint en chat sur « ADF vs Phillips-Perron », pas sur les 3 questions multi-hop du jeu) ; latence médiane ≤ celle de la chaîne fixe ✅ ; aucune citation fantôme sur le jeu de test ✅ ; refus propre hors domaine ✅.
 
 ### Phase 4 — Expérience étudiant (4–6 sessions, modulable)
 
-1. **Quiz 2.0** : persistant, LaTeX dans questions/options (options rendues dans le message, boutons A/B/C/D), difficulté adaptative, relance ciblée sur les erreurs, score enregistré.
-2. **Mode exercice / socratique** : ELA guide sans donner la solution ; boutons « Indice », « Vérifier mon étape », « Solution ».
-3. **Fiches de révision** par chapitre (générées depuis les slides, exportables Markdown/PDF).
+1. ✅ **Quiz 2.0** (lot 4a, livré le 18/10) : persistant (`quiz_results`, migration 0004), LaTeX dans questions/options (options rendues dans le message, boutons A/B/C/D), difficulté adaptative par session, relance ciblée (« M'expliquer davantage » via l'agent, « Refaire un quiz sur mes erreurs » avec questions reformulées), score enregistré.
+2. ✅ **Mode exercice / socratique** (lot 4b, livré le 18/10) : ELA guide sans donner la solution ; boutons « Vérifier mon étape » (évaluation structurée de la tentative contre le corrigé caché, question d'orientation), « Indice », « Solution » ; tentatives persistées (`exercise_attempts`, migration 0005).
+3. ✅ **Fiches de révision** par chapitre (lot 4d, livré le 18/10) : `/fiche` et outil `generate_review_sheet`, générées depuis les slides du chapitre (plan du cours, parties fusionnées pour les longs chapitres), sortie structurée, Markdown + KaTeX, fichier `.md` téléchargeable, cache partagé `review_sheets` (migration 0007) régénéré sur changement de corpus/prompt. PDF reporté (pas de pandoc/LaTeX dans la pile).
 4. **Flashcards** avec révision espacée (table `student_progress`).
-5. **Tableau de bord étudiant** (dans Chainlit) : notions vues, scores, points faibles, suggestions.
-6. **Suggestions de suivi** cliquables en fin de réponse (« voir la démonstration », « me tester », « exemple Python »).
+5. ✅ **Tableau de bord étudiant** (lot 4c, livré le 18/10) : `/bilan` dans Chainlit (chapitres travaillés, scores, points faibles, exercices, suggestions cliquables) sur `student_activity` (migration 0006) + `quiz_results` + `exercise_attempts` ; onglet « Pédagogie » du backoffice (réussite par sujet, questions ratées, exercices, questions par chapitre, hors corpus).
+6. ✅ **Suggestions de suivi** cliquables en fin de réponse (lot 4d) : « Me tester », « Exercice », « Fiche », « Exemple Python », calculées depuis les extraits cités sans appel LLM.
 7. **Profils de chat** : Cours / Entraînement / Atelier Code.
-8. (Option, à confirmer) **Atelier Code 2.0** : exécution du script généré dans un service Docker isolé (sans réseau, CPU/mémoire/temps limités, `numpy/pandas/statsmodels/matplotlib`), sortie et graphique affichés dans le chat.
+8. ✅ **Atelier Code 2.0** (lot 4e, livré le 18/10) : service `apps/sandbox` (sous-processus `python -I` avec limites `resource`, figures capturées), conteneur sur réseau interne sans Internet, non-root, lecture seule ; bouton « Exécuter » sur clic, « Corriger le script » (une passe), outil d'agent `run_python` (1 appel/réponse), quota 10 exécutions/jour/étudiant (`code_runs`, migration 0008), onglet « Code » du backoffice ; interprétation de la sortie réelle après exécution (tableau des résultats + commentaire cité, « Compléter le script » si rien n'est imprimé). R en génération seule. Validé en local le 18/10 ; à valider sur le VPS (Docker).
+
+Correctifs du 18/10 (retours de test avec un profil étudiant M1) : sorties structurées réellement utilisées en production (le modèle avec repli n'exposait pas `with_structured_output` → JSON texte tronqué à 2 048 tokens, antislashs LaTeX non échappés), quiz générés par lots de 5 (10 questions possibles), bouton « Réessayer le quiz » après un échec de l'outil, garde de pertinence sans LLM (`ela.pedagogy.relevance`) contre la dérive de sujet (quiz ARMA pour une demande GARCH), prompt système et messages informés du cloisonnement par niveau (« traité dans Financial_Econometrics (M2) »), bilan comptant les quiz dans les chapitres travaillés.
 
 Critères d'acceptation : un étudiant M1 enchaîne quiz → erreur → explication → exercice guidé sans quitter le fil ; ses résultats apparaissent dans son tableau de bord et dans le backoffice.
 
@@ -261,7 +264,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 Variante « résultat visible vite » : 0 → 2 (embeddings/reranker uniquement) → 3 → 1 → 4 → 5.
 
-Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** (fin P2) ajout d'un cours en direct + rapport d'évaluation avant/après ; **J3** (fin P3) agent avec étapes et sources visibles ; **J4** (fin P4) parcours étudiant complet.
+Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** (fin P2) ajout d'un cours en direct + rapport d'évaluation avant/après ; **J3** (fin P3) agent avec étapes et sources visibles — livré le 17/10 ; **J4** (fin P4) parcours étudiant complet.
 
 ---
 

@@ -158,7 +158,15 @@ def main():
 
     page = st.sidebar.radio(
         "Navigation",
-        ["🏠 Accueil", "👥 Utilisateurs", "📚 Base RAG", "📊 Activité", "⭐ Feedbacks", "💬 Conversations"],
+        [
+            "🏠 Accueil",
+            "👥 Utilisateurs",
+            "📚 Base RAG",
+            "📊 Activité",
+            "🎓 Pédagogie",
+            "⭐ Feedbacks",
+            "💬 Conversations",
+        ],
         label_visibility="collapsed",
     )
 
@@ -176,6 +184,10 @@ def main():
         from views.activity import show_activity_page
 
         show_activity_page()
+    elif page == "🎓 Pédagogie":
+        from views.pedagogy import show_pedagogy_page
+
+        show_pedagogy_page()
     elif page == "⭐ Feedbacks":
         from views.feedbacks import show_feedbacks_page
 

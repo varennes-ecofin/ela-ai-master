@@ -102,7 +102,7 @@ def test_parser_elements_are_linked_to_parent():
     assert elements[0].element_title == "Processus" and elements[0].slide_title == parent.slide_title
     meta = elements[0].metadata()
     assert meta["type"] == "element" and meta["doc_kind"] == "slides" and meta["n_chars"] == len(elements[0].text)
-    assert all(isinstance(v, (str, int)) for v in meta.values())
+    assert all(isinstance(v, str | int) for v in meta.values())
 
 
 def test_chunk_ids_are_stable_and_content_based():

@@ -3,7 +3,104 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
-## [Unreleased] — Phase 2 : retrieval 2.0
+## [Unreleased] — Consolidation
+
+### Corrigé
+- `docker-compose.yml` : chemin du Dockerfile du backoffice (`apps/admin/Dockerfile`).
+- CI : installation identique aux images Docker (`.[dev,admin]`, torch CPU, matplotlib pour les tests du bac à sable), Python 3.12 ; les tests ignorent aussi les variables `AGENT_*`, `PROMPT_*`, `LANGFUSE_*`, `EVAL_*`, `SANDBOX_*`, `CODE_*` du terminal.
+- `.gitignore` : exports `*.jsonl` (contenu des cours) hors dépôt.
+
+### Ajouté
+- `docs/DEPLOIEMENT_VPS.md` : installation, mise à jour, variables serveur, vérifications, sauvegarde/retour arrière, intégration à un Caddy existant.
+
+## [Unreleased] — Phase 4e : Atelier Code 2.0 (exécution sandboxée)
+
+### Ajouté
+- **Service d'exécution** `apps/sandbox/` (image `ela-sandbox` : Python 3.12 + numpy, pandas, scipy, statsmodels, matplotlib, arch ; serveur HTTP en bibliothèque standard, `POST /run`). Chaque script tourne dans un sous-processus `python -I` jetable, répertoire temporaire, limites CPU / mémoire / processus / taille de fichier (`resource`), délai mural ; les figures matplotlib sont capturées (backend Agg) et renvoyées en PNG. Dans `docker-compose.yml`, le service `sandbox` est sur un réseau **interne** (aucun accès Internet), non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`, `mem_limit`, `pids_limit` ; seul `app` peut l'atteindre.
+- **Client et service** (`ela.sandbox`) : `SANDBOX_URL` (vide = scripts générés mais jamais exécutés, comportement précédent), `SANDBOX_TIMEOUT_SECONDS`, **quota** `SANDBOX_DAILY_QUOTA` (10 exécutions par étudiant et par jour ; 0 = illimité) ; chaque exécution est journalisée dans `code_runs` (migration `0008`).
+- **Atelier Code** : bouton **▶️ Exécuter** sous le script (Python, bac à sable configuré) ; sortie, erreurs (fin de trace) et graphiques affichés dans le fil ; en cas d'erreur, bouton **🔧 Corriger le script** (une passe de correction par le modèle, prompt `fix_code_v1.md`) puis nouvelle exécution. R reste en génération seule.
+- **Agent** : outil `run_python(code)` (un appel par réponse, présent seulement si `SANDBOX_URL` est défini) pour calculer, simuler ou vérifier numériquement ; la sortie et les figures sont affichées à l'étudiant, le modèle les commente ; même quota.
+- **Backoffice → Pédagogie → onglet « 💻 Code »** : exécutions par statut et origine, erreurs les plus fréquentes, exécutions par étudiant.
+- Le prompt de l'atelier demande des scripts autonomes (graine fixée, pas de `plt.show()`, ni réseau, ni fichiers, ni `input()`) **qui impriment leurs résultats** (tableau des estimations : paramètre, vraie valeur si simulée, estimation, écart-type, t-stat ; statistiques utiles) ; la réponse initiale décrit « ce qu'il faudra regarder » sans annoncer de résultat (le script n'a pas encore tourné).
+- **Fiabilité des scripts** : modèle dédié à l'atelier (`CODE_MAX_TOKENS=4096`, `CODE_REASONING_EFFORT=medium` ; le budget de 2 048 tokens du chat tronquait les scripts longs) ; vérification syntaxique (`ast.parse`) avant affichage avec correction silencieuse, sans exécution ni quota ; la correction reçoit l'historique des erreurs déjà rencontrées sur le script (pas de régression) ; `CODE_AUTO_FIX=true` : après un échec d'exécution, une correction automatique puis ré-exécution avant d'afficher l'erreur (une exécution de quota supplémentaire ; la trace reste visible si la seconde tentative échoue, avec le bouton « Corriger »).
+- **Interprétation après exécution** : après une exécution réussie, un appel modèle (`interpret_run_v1.md`, `ela.sandbox.service.interpret_run`) produit un tableau Markdown des résultats recopiés de la sortie réelle et un commentaire relié au cours (citations `[S#]` vérifiées, panneau de sources, titres des figures). Si le script n'a rien imprimé de chiffré, ELA le dit et propose **🔧 Compléter le script** (une passe qui ajoute les `print()`).
+
+## [Unreleased] — Phase 4d : fiches de révision et suggestions de suivi
+
+### Ajouté
+- **Fiches de révision par chapitre** : `/fiche` (starter « Fiche de révision », choix du cours puis du chapitre par boutons, ou « *UTS, chapitre 2* » en texte) et outil d'agent `generate_review_sheet(course, chapter)` (« fais-moi une fiche sur le chapitre 2 »). La fiche est générée depuis les slides du chapitre prises dans le plan du cours (pas de recherche vectorielle, donc pas de dérive ; chapitres longs résumés par parties puis fusionnés — `ela.pedagogy.review`), en sortie structurée `ReviewSheet` (objectifs, sections : notions clés / définitions / formules / pièges, « à retenir », titres des slides ; prompt `review_sheet_v1.md`). Affichée en Markdown + KaTeX dans le fil avec un fichier `.md` téléchargeable et les boutons « Me tester sur ce chapitre » / « Un exercice ».
+- **Cache partagé des fiches** : table `review_sheets` (migration `0007`, `ela.db.review_sheets`) — une fiche par (cours, chapitre, niveau, version de prompt, empreinte du corpus), resservie à tous les étudiants et régénérée quand les slides ou le prompt changent. Aucune donnée étudiante ; la consultation est journalisée dans `student_activity` (bilan, backoffice).
+- **Suggestions de suivi** en fin de réponse, sans appel au modèle (`ui.followup_actions`) : « 🎓 Me tester : *notion* » (quiz restreint au chapitre dominant des extraits cités), « ✏️ Exercice : *notion* », « 📄 Fiche : *chapitre* » et « 💻 Exemple Python » quand la question parle de code. Pas de suggestion sur un refus, une réponse sans extrait cité, ou pendant un quiz/exercice.
+- `generate_quiz` accepte des filtres `course` / `chapter` (quiz sur un chapitre précis depuis une fiche ou une suggestion).
+
+## [Unreleased] — Correctifs quiz (retours de test 4c)
+
+### Corrigé
+- **Sorties structurées en production** : le modèle partagé est enveloppé d'un modèle de secours (`RunnableWithFallbacks`), qui n'expose pas `with_structured_output` ; quiz, exercices et vérification d'étape passaient donc toujours par le repli « JSON en texte » avec le budget `LLM_MAX_TOKENS` (2 048). `ainvoke_structured` déballe le modèle principal pour la voie structurée, conserve les replis pour la voie texte, accepte un budget `max_tokens` dédié (4 096 pour la génération) et répare les antislashs LaTeX non échappés (`\hat{\rho}` → formules rouges, options brouillées).
+- **Quiz longs** : génération par lots de 5 questions (une requête par lot, les questions des lots précédents sont exclues) ; un quiz de 10 questions tient désormais ; les questions mal formées (options vides ou brouillées, doublons) sont écartées ; si un lot échoue, les questions déjà obtenues sont conservées et le nombre réellement produit est affiché.
+- **Reprise après échec** : quand l'outil `generate_quiz` de l'agent échoue, la réponse porte un bouton « 🔁 Réessayer le quiz » qui regénère avec le même sujet, le même nombre de questions et la même difficulté (un nouveau tour d'agent oubliait le nombre demandé) ; `ElaEngine.generate_quiz` / `generate_exercise` distinguent l'échec du modèle (`GenerationError`) du sujet absent (`None`). L'en-tête de la première question affiche le sujet, le nombre réel de questions et la difficulté.
+- **Dérive de sujet** : `generate_quiz` et `generate_exercise` vérifient que les extraits retournés mentionnent le sujet demandé (`ela.pedagogy.relevance` : acronymes obligatoires, moitié des autres termes, sans appel au modèle) ; un étudiant M1 qui demande un quiz GARCH n'obtient plus un quiz ARMA.
+- **Niveau de l'étudiant** : le prompt système indique que seuls les cours de son niveau lui sont accessibles ; quand un sujet est traité dans un cours d'un autre niveau (`courses_elsewhere`), l'outil et les messages de `/start_quiz`, `/exercise` et du bilan le disent (« ce sujet est traité dans Financial_Econometrics (M2) ») au lieu de « le cours ne traite pas ce sujet ».
+- **Bilan** : les chapitres travaillés comptent aussi les quiz (`chapters_worked` : questions **et** quiz par cours › chapitre) ; un chapitre déjà testé par quiz n'est plus proposé en « Me tester ».
+
+## [Unreleased] — Phase 4c : suivi de l'étudiant
+
+### Ajouté
+- **Journal d'activité** : chaque question répondue par l'agent est enregistrée (`student_activity`, migration `0006` : cours/chapitre dominants des extraits cités, nombre de recherches et d'extraits, réponse hors cours `[Connaissances générales]`, refus) — uniquement pour un étudiant connecté.
+- **`/bilan`** dans le chat (et starter « Mon bilan ») : questions posées, chapitres travaillés, réussite aux quiz (points faibles < 60 %, points forts ≥ 80 %), exercices commencés/terminés, puis jusqu'à trois suggestions cliquables (quiz sur un point faible, reprise d'un exercice inachevé, quiz sur un chapitre travaillé mais jamais testé). `ela.db.progress` (`student_report`, `render_report`, `build_suggestions`).
+- **Backoffice — onglet « 🎓 Pédagogie »** (`apps/admin/views/pedagogy.py`) : réussite des quiz par sujet et questions les plus ratées, exercices par sujet (taux d'achèvement, étapes correctes), questions par cours/chapitre et dernières questions, **hors corpus** (questions refusées, répondues en connaissances générales ou sans extrait — signal pour les supports), le tout filtré par période.
+
+## [Unreleased] — Phase 4b : mode exercice socratique
+
+### Ajouté
+- **« ✍️ Vérifier mon étape »** sur chaque exercice : l'étudiant écrit son raisonnement, ELA l'évalue contre le corrigé caché (`ela.pedagogy.exercise.check_step`, sortie structurée `StepFeedback` : verdict correct / partiel / incorrect / hors sujet, commentaire, question d'orientation) sans jamais donner la suite ; les tentatives précédentes et les indices déjà révélés sont transmis au modèle ; `stop` rend la main au chat ; l'exercice est marqué terminé quand le résultat attendu est atteint (le corrigé reste consultable). Prompt `check_step_v1.md`.
+- **Persistance** des tentatives : table `exercise_attempts` (migration `0005`), `ela.db.exercises` (`record_attempt`, `exercise_summary`) — matière pour le bilan étudiant (lot 4c).
+- `Exercise` porte `exercise_id` et `topic`.
+
+### Corrigé
+- Console : le warning Pydantic `PydanticSerializationUnexpectedValue` émis par `langchain-openai` à chaque sortie structurée réussie est filtré (`ela.log`).
+
+## [Unreleased] — Phase 4a : Quiz 2.0
+
+### Ajouté
+- **Persistance des quiz** : table `quiz_results` (migration `0004`), une ligne par question répondue (étudiant, fil, quiz, sujet, difficulté, cours/chapitre, options, réponse, extraits du cours) ; `ela.db.quiz` (`record_answer`, `recent_errors`, `user_stats`, `next_difficulty`). Les écritures n'interrompent jamais le quiz.
+- **Relance ciblée** : après une mauvaise réponse, bouton « 💬 M'expliquer davantage » (l'agent explique la bonne réponse à partir du cours, dans le fil) ; en fin de quiz, bouton « 🔁 Refaire un quiz sur mes erreurs » (nouveau quiz ciblé sur les notions ratées, questions reformulées — paramètre `focus` de `generate_quiz`).
+- **Difficulté adaptative** par session : ≥ 80 % de bonnes réponses → niveau supérieur, ≤ 40 % → niveau inférieur ; affichée dans le message de score et appliquée au quiz suivant (`/start_quiz` ou relance).
+- `Quiz` porte désormais `quiz_id`, `difficulty`, `source_labels`, `course`, `chapter`.
+- La difficulté adaptative s'applique aussi aux quiz demandés à l'agent en langage naturel (outil `generate_quiz` : niveau de la session sauf demande explicite) ; `/start_quiz` accepte « sujet, 5 questions » (1 à 10, 3 par défaut) ; les prompts quiz/exercice ne montrent plus les identifiants `S#` au modèle (les questions ne citent plus « l'extrait [S4] »).
+
+### Corrigé
+- Data layer : un pas (étape d'outil, réponse) terminé rapidement pouvait être écrasé par son insertion initiale (tâches concurrentes de Chainlit) ; `output`, `input`, `end` ne reculent plus lors de l'upsert.
+
+## [2.0.0a4] — 2026-10-18 — Phase 3 : ELA agentique
+
+### Ajouté
+- **Agent** (`ela.agent`, LangChain 1.4 `create_agent` sur LangGraph) : le modèle décide quand et comment chercher avec les outils `search_course` (hybride, scopé au niveau, filtres cours/chapitre), `get_course_outline` (plan chapitre › section › slides), `get_slide` (relecture d'un extrait ou d'une slide), `generate_quiz` et `generate_exercise` (sorties structurées Pydantic, `ela.pedagogy`). Questions composées traitées par plusieurs recherches (appels d'outils parallèles).
+- **Citations vérifiées** : chaque extrait lu par le modèle reçoit un identifiant `[S1]`, `[S2]`… (`SourceRegistry`) ; les citations de la réponse sont contrôlées mécaniquement et les citations fantômes retirées ; `[Connaissances générales]` pour le hors-cours.
+- **Middleware** : prompt système dynamique (niveau, cours visibles, résumé d'historique), modèle de secours, limites d'appels modèle/outils, récupération des erreurs d'outils. Résumé d'historique par session (`HistorySummarizer`) pour les tours qui sortent de la fenêtre.
+- **Prompts versionnés** (`ela/agent/prompts/*_v1.md`, `PROMPT_VERSION`), inscrits dans les traces et rapports.
+- **Images** : transcription fidèle par le modèle vision (équations LaTeX, tableaux, sorties logicielles, graphiques) puis traitement par l'agent texte ; visible comme une étape « Lecture de l'image jointe ».
+- **UI Chainlit** (`apps/chat/ui.py`) : appels d'outils affichés en étapes (`cl.Step`), panneau de sources latéral (cours › chapitre › slide, score, extrait rendu en KaTeX) relié aux citations `[S1]`, quiz avec LaTeX dans les questions/explications (options en texte brut), exercice avec boutons **Indice** / **Solution** ; nouvelle commande `/exercise`.
+- **Évaluation de bout en bout** `ela-eval answer` (`ela.eval.answer`, juge LLM `ela.eval.judge`) : latence médiane/p90, recherches par question, citations valides/fantômes, fidélité (points attendus), refus hors domaine, étiquetage hors corpus, multi-étapes ; `--engine legacy` rejoue la chaîne fixe de la phase 2 (gelée dans `ela.eval.legacy_pipeline`) pour la mesure « avant » ; `ela-eval compare` accepte les rapports `answer`.
+- **Traçage Langfuse** optionnel (`ela.tracing`, variables `LANGFUSE_*`, extra `tracing`), désactivé par défaut, identifiant étudiant non transmis sauf `LANGFUSE_SEND_USER_ID=true`.
+- Store/retriever : filtre par cours (`courses`) dans les deux backends, filtre chapitre et `top_n` par appel dans `ScopedRetriever.invoke`.
+- Tests : citations, sorties structurées, juge et métriques, outils et plan de cours, agent de bout en bout avec modèle scripté (recherche simple, question composée, citation fantôme, refus, limite d'appels, image, modèle de secours, quiz, résumé d'historique), rendu Chainlit avec module simulé, traçage.
+
+### Corrigé
+- Migration `0003_chainlit_212_steps` : colonnes `steps.autoCollapse` et `steps.modes` écrites par Chainlit 2.12 ; sans elles, l'enregistrement de chaque étape d'outil échouait silencieusement et les étapes disparaissaient à la reprise d'un fil.
+- Stockage local : les éléments texte (panneau de sources) sont écrits en UTF-8 (`.md`, `text/markdown`) au lieu d'échouer en binaire ; test d'intégration « tour de l'agent persisté puis repris » ajouté.
+- Quiz : les options sont mélangées après génération (la bonne réponse n'est plus systématiquement A) ; elles sont rendues dans le message (LaTeX/KaTeX autorisé), les boutons ne portent plus que la lettre.
+- Rendu LaTeX : un bloc `$$…$$` multi-lignes (`$$\begin{aligned}`) reçoit ses délimiteurs sur des lignes propres, sans quoi remark-math l'affichait en rouge ; le panneau de sources n'affiche plus l'en-tête contextuel (COURS/CHAPITRE/…) déjà porté par le fil d'Ariane.
+
+### Modifié
+- `ElaEngine.ask` renvoie un flux d'événements typés (`ela.agent.events`) consommé par Chainlit et par l'évaluation ; `generate_quiz` / `generate_exercise` renvoient des objets Pydantic ; l'historique complet est transmis au moteur qui le borne et le résume.
+- Configuration : `PROMPT_VERSION`, `AGENT_MAX_MODEL_CALLS`, `AGENT_MAX_TOOL_CALLS`, `AGENT_MAX_SEARCHES`, `AGENT_SEARCH_K`, `AGENT_SEARCH_K_MAX`, `AGENT_OUTLINE_MAX_CHARS`, `AGENT_SUMMARY_ENABLED`, `LANGFUSE_*`, `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_REASONING_EFFORT`.
+- Dépendances : `langchain==1.4.6`, `langgraph==1.2.16` ; extra `tracing` (`langfuse`).
+
+### Supprimé
+- `src/ela/guard.py` (RAGGuard) et l'appel de notation systématique avant chaque réponse ; `prompts.quiz_prompt` (remplacé par `prompts/quiz_v1.md`).
+
+## [2.0.0a3] — 2026-10-17 — Phase 2 : retrieval 2.0
 
 ### Ajouté
 - **Parseur LaTeX v2** (`ela.ingestion.texclean`, `ela.ingestion.latex`) : suppression correcte des commentaires (les frames commentées ne sont plus ingérées), expansion des macros sans argument du cours, chunks typés — `slide`, `definition`/`theorem`/`proposition`/`lemma`/`corollary`/`example`/`remark`/`model`/`assumption` (rattachés à leur slide par `parent_id`) et `text` (manuscrits découpés par chapitre/section/paragraphes) — avec `doc_kind` (`slides`/`manuscript`), notes `\note{}` de l'enseignant, tableaux, figures, colonnes, chapitres beamer personnalisés ; identifiants stables par hash de contenu.
