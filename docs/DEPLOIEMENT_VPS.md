@@ -92,3 +92,34 @@ git checkout <commit-précédent> && docker compose build && docker compose up -
 
 Les migrations Alembic sont additives (tables nouvelles) : revenir à une
 version antérieure du code ne casse pas la base.
+
+## 6. Migration depuis l'ancienne version (VPS avec Caddy dans Docker)
+
+Situation de départ : l'ancien ELA (`app.py`, `main_ela.py`) tourne depuis
+`/home/debian/ela-ai-master` avec son propre `docker-compose.yml` (application
+publiée sur le port 80 en HTTP, backoffice sur 0.0.0.0:8501) ; Caddy tourne en
+conteneur (`/opt/caddy`) sur le réseau Docker `proxy` et ne publie que le 443.
+
+Cible : Caddy publie 80 et 443 et sert `https://ela.<domaine>` (application) et
+`https://ela.<domaine>/admin` (backoffice, authentification basique) en joignant
+`app:8000` et `admin:8501` sur le réseau `proxy`. La base PostgreSQL existante
+(volume `ela-ai-master_postgres_data`) est conservée.
+
+Séquence (chaque étape indique ce qu'elle doit afficher) :
+
+1. **Sauvegarde** de la base, ancienne pile encore en marche :
+   `docker compose exec db pg_dump -U $POSTGRES_USER $POSTGRES_DB | gzip > ~/ela-backup-$(date +%F).sql.gz`
+   (variables lues avec `set -a; . ./.env; set +a` au préalable) — fichier de quelques centaines de Ko.
+2. **Arrêt** de l'ancienne pile : `docker compose down` (sans `-v` : les volumes restent). `docker ps` ne montre plus que `caddy` et `echecs`.
+3. **Code** : `git fetch origin && git reset --hard origin/main` ; `ls` montre `apps/ src/ pyproject.toml docker-compose.yml deploy/` et plus `app.py`.
+4. **Surcouche compose** : `cp deploy/docker-compose.override.vps.yml docker-compose.override.yml`.
+5. **Cours** : la nouvelle ingestion lit `data/latex/{M1|M2|Commun}/<Cours>/*.tex`. Vérifier `find data -maxdepth 3 -type d` et réorganiser si besoin (`mkdir -p data/latex/M1 data/latex/M2 data/latex/Commun`, puis déplacer chaque dossier de cours dans son niveau).
+6. **`.env`** : repartir de `.env.example` (`cp .env .env.ancien && cp .env.example .env`) et reporter depuis l'ancien : `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (identiques, sinon la base ne s'ouvre plus), `CHAINLIT_AUTH_SECRET`, `CEREBRAS_API_KEY`. Régler `ELA_ENV=prod`, `RETRIEVAL_BACKEND=pgvector`, `EMBEDDING_PROVIDER=local`, `SANDBOX_URL=http://sandbox:8080`, `LOG_JSON` est forcé par compose. Laisser `DATABASE_URL` : compose l'écrase.
+7. **Construction et démarrage** : `docker compose build` (5–10 min la première fois) puis `docker compose up -d db` ; `docker compose ps` : `db` healthy.
+8. **Migrations** : `docker compose run --rm app ela-db upgrade` — liste `0001_baseline` → `0008_code_runs`.
+9. **Démarrage** : `docker compose up -d` ; `docker compose ps` : `app`, `admin`, `sandbox`, `db` ; `docker compose logs -f app` jusqu'à « Your app is available at http://0.0.0.0:8000 » (le premier démarrage télécharge bge-m3, ≈ 2,2 Go, dans `data/hf-cache`).
+10. **Ingestion** : `docker compose exec app ela-ingest` — nombre de fichiers, de chunks, par niveau.
+11. **Caddy** (`/opt/caddy`) : ajouter `DOMAINE_ELA=ela.<domaine>` au `.env` de Caddy ; coller `deploy/caddy-ela.docker.snippet` à la fin du `Caddyfile` avec le hash de `docker compose exec app ela-hash --caddy` ; dans son `docker-compose.yml`, ajouter `"80:80"` aux ports de Caddy et retirer `disable_http_challenge` du bloc échecs (le port 80 est libre maintenant) ; `docker compose up -d` dans `/opt/caddy` puis `docker logs caddy --tail 20` : certificat obtenu pour le sous-domaine (le DNS doit déjà répondre : `dig +short ela.<domaine>`).
+12. **Vérifications** du § 4, puis rotation des mots de passe (§ 3 du README : `ela-users create …` réécrit un compte).
+
+Retour arrière : `docker compose down` dans `/home/debian/ela-ai-master`, `git checkout <ancien commit>` (ou le `.env.ancien` + `docker-compose.yml.backup`), `docker compose up -d`. La base n'est pas modifiée de façon destructive par les migrations (tables ajoutées seulement).

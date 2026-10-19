@@ -1,0 +1,23 @@
+# ============================================================
+# ELA AI — surcouche compose pour le VPS où Caddy tourne DANS Docker
+# sur un réseau nommé « proxy » (celui d'Échecs Junior).
+#
+# À copier sur le serveur sous le nom docker-compose.override.yml
+# (docker compose le fusionne automatiquement avec docker-compose.yml) :
+#   cp deploy/docker-compose.override.vps.yml docker-compose.override.yml
+#
+# Effet : `app` et `admin` rejoignent le réseau « proxy » en plus des
+# leurs ; Caddy les atteint par leur nom de service (app:8000, admin:8501).
+# Les ports 127.0.0.1:8000 / 8501 restent publiés pour les tests locaux.
+# ============================================================
+services:
+  app:
+    networks:
+      - proxy
+  admin:
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

@@ -32,6 +32,9 @@ latex/
 .chainlit/*
 !.chainlit/config.toml
 
+# --- Surcouche compose propre à chaque serveur ---
+docker-compose.override.yml
+
 # --- Python ---
 __pycache__/
 *.py[cod]

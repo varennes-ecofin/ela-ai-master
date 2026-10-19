@@ -1,0 +1,34 @@
+# ============================================================
+# ELA AI — bloc à ajouter au Caddyfile d'un Caddy qui tourne DANS Docker,
+# sur le même réseau « proxy » que les services app / admin
+# (voir deploy/docker-compose.override.vps.yml).
+#
+# Variables attendues dans le .env de Caddy : DOMAINE_ELA (ex. ela.mondomaine.fr).
+# Hash bcrypt du backoffice : `docker compose exec app ela-hash --caddy`.
+# Caddy doit publier les ports 80 ET 443 (port 80 : défi HTTP Let's Encrypt
+# et redirection http → https).
+# ============================================================
+
+{$DOMAINE_ELA} {
+    encode zstd gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    @admin path /admin /admin/*
+    handle @admin {
+        basic_auth {
+            admin $2b$12$REMPLACER_PAR_LE_HASH
+        }
+        reverse_proxy admin:8501
+    }
+
+    handle {
+        reverse_proxy app:8000
+    }
+}
