@@ -111,7 +111,9 @@ services:
     env_file:
       - .env
     environment:
+      # Force les deux URL vers le service db (une valeur « localhost » du .env serait prioritaire sinon)
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - ADMIN_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.baseUrlPath", "admin"]
     volumes:
       - ./data:/app/data
