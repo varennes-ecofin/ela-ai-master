@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 1.9 — 2026-10-18
+> **Version** : 2.0 — 2026-10-21
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phases 0 à 3 validées (18/10) · Phase 4 en cours : 4a (Quiz 2.0) et 4b (socratique) validés, 4c (suivi) validé (+ correctifs quiz du 18/10), 4d (fiches + suggestions) validé, 4e (Atelier Code 2.0, exécution sandboxée) livré pour test — à valider sur le VPS
+> **Statut** : Phases 0 à 3 validées (18/10) · Phase 4 en cours : 4a (Quiz 2.0) et 4b (socratique) validés, 4c (suivi) validé (+ correctifs quiz du 18/10), 4d (fiches + suggestions) validé, 4e (Atelier Code 2.0) validé · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · prochaines étapes : Phases 5 et 6 à cadrer
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
