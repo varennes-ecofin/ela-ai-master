@@ -1,0 +1,28 @@
+{% from "_macros.html" import icon, empty with context %}
+{% if overview.error %}
+<p class="error">{{ icon("circle-alert") }}<span>Base de données inaccessible : {{ overview.error }}</span></p>
+{% endif %}
+<div class="kpis">
+  <div class="kpi">{{ icon("users", "kpi-icon") }}<span class="kpi-value">{{ overview.users_active }}<small>sur {{ overview.users_total }} comptes</small></span><span class="kpi-label">Comptes actifs</span></div>
+  <div class="kpi">{{ icon("graduation-cap", "kpi-icon") }}<span class="kpi-value">{{ overview.students }}</span><span class="kpi-label">Étudiants</span></div>
+  <div class="kpi">{{ icon("activity", "kpi-icon") }}<span class="kpi-value">{{ overview.active_students_7d }}</span><span class="kpi-label">Étudiants actifs (7 jours)</span></div>
+  <div class="kpi">{{ icon("message-square", "kpi-icon") }}<span class="kpi-value">{{ overview.threads }}</span><span class="kpi-label">Conversations</span></div>
+  <div class="kpi">{{ icon("send", "kpi-icon") }}<span class="kpi-value">{{ overview.messages_today }}<small>hier : {{ overview.messages_yesterday }}</small></span><span class="kpi-label">Messages aujourd'hui</span></div>
+  <div class="kpi">{{ icon("database", "kpi-icon") }}<span class="kpi-value">{% if overview.rag_chunks is not none %}{{ overview.rag_chunks }}{% else %}—{% endif %}</span><span class="kpi-label">Chunks indexés</span></div>
+</div>
+
+<section class="card">
+  <h2>{{ icon("message-square") }}Dernières conversations</h2>
+  {% if overview.recent_threads %}
+  <table class="table">
+    <thead><tr><th>Date</th><th>Étudiant</th><th>Fil</th><th class="num">Messages</th></tr></thead>
+    <tbody>
+    {% for t in overview.recent_threads %}
+      <tr><td class="mono nowrap">{{ t.created_at }}</td><td>{{ t.identifier or '?' }}</td><td>{{ t.name or '(sans titre)' }}</td><td class="num">{{ t.messages }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ empty("Aucune conversation enregistrée.", "message-square") }}
+  {% endif %}
+</section>

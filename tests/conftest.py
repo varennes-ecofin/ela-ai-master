@@ -38,6 +38,8 @@ _PREFIXES = (
     "EVAL_",
     "SANDBOX_",
     "CODE_",
+    "AUTH_",
+    "BACKOFFICE_",
 )
 
 
@@ -50,6 +52,7 @@ def _clean_ela_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ignore any .env lying around (tests are hermetic)
     monkeypatch.setenv("ELA_ENV_FILE", os.devnull)
 
+    from ela import auth as auth_mod
     from ela import engine as engine_mod
     from ela.config import get_settings
     from ela.retrieval import resources
@@ -57,7 +60,9 @@ def _clean_ela_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
     resources.reset()
     engine_mod.reset_llms()
+    auth_mod.reset()
     yield
     get_settings.cache_clear()
     resources.reset()
     engine_mod.reset_llms()
+    auth_mod.reset()

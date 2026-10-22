@@ -2,7 +2,8 @@
 # ELA AI — reverse proxy Caddy
 #  - HTTPS automatique (Let's Encrypt pour un domaine, certificat
 #    interne pour une IP ou localhost)
-#  - /admin* -> backoffice (protégé par authentification basique)
+#  - /admin*      -> backoffice Streamlit (protégé par authentification basique)
+#  - /backoffice* -> nouveau backoffice FastAPI (connexion dans l'application)
 #  - /*      -> application Chainlit (websockets inclus)
 # ============================================================
 
@@ -27,6 +28,12 @@
 	}
 
 	# Application Chainlit
+	# Nouveau backoffice (FastAPI, phase 5) : authentification par session dans l'application
+	@backoffice path /backoffice /backoffice/*
+	handle @backoffice {
+		reverse_proxy backoffice:8080
+	}
+
 	handle {
 		reverse_proxy app:8000
 	}

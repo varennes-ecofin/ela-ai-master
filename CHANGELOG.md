@@ -3,6 +3,25 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [2.0.0a12] — 2026-10-21 — Phase 5, lot 5.1 : socle du nouveau backoffice (FastAPI + Jinja2 + HTMX)
+
+### Ajouté
+- **Nouveau backoffice** `apps/backoffice/` (FastAPI, Jinja2, HTMX vendu dans `static/`, CSS léger clair/sombre), construit à côté de Streamlit et servi sous `BACKOFFICE_ROOT_PATH` (`/backoffice`) en local comme derrière Caddy. Lancement : `python apps/backoffice/main.py --reload` ; Docker : service `backoffice` (`127.0.0.1:8502`, `uvicorn --factory`), extraits Caddy (`/backoffice*`, sans authentification basique) et surcouche VPS mis à jour.
+- **Connexion et sessions** : formulaire de connexion sur les comptes `users` (`admin` : tout ; `supervisor` : consultation ; étudiants refusés), cookie de session signé (`itsdangerous`, `BACKOFFICE_SECRET_KEY`, `BACKOFFICE_SESSION_HOURS`, `HttpOnly`/`SameSite=Lax`/`Secure` en prod), jeton CSRF (cookie signé + champ ou en-tête `X-CSRF-Token`, aussi sur le formulaire de connexion), verrouillage d'un identifiant après `BACKOFFICE_LOGIN_MAX_FAILURES` échecs pendant `BACKOFFICE_LOGIN_LOCK_MINUTES`, compte revérifié à chaque requête (désactivation ou changement de rôle immédiats), redirections `next` limitées à l'application, en-têtes de sécurité et `Cache-Control: no-store`.
+- **Abstraction d'authentification** `ela.auth` (`AuthProvider`, `Credentials`, `Identity`, `ProvisioningPolicy`, `AUTH_PROVIDER=local`) : le fournisseur local enveloppe `ela.db.users.authenticate` ; le CAS de l'université (création automatique des comptes étudiants au premier login) s'y branchera sans toucher aux vues.
+- **Journal d'administration** : table `admin_audit` (migration `0009`, `ela.db.audit`) — `login.ok`, `login.failed`, `login.locked`, `logout` pour l'instant, affiché sur l'accueil pour les `admin` (heure locale `BACKOFFICE_TIMEZONE`).
+- **Accueil** : indicateurs (comptes actifs, étudiants, étudiants actifs sur 7 jours, conversations, messages du jour et de la veille, chunks indexés) et dernières conversations, rafraîchis par HTMX toutes les 60 s (`ela.db.dashboard`) ; sonde `/backoffice/healthz` (`?deep=1` vérifie la base).
+- **Interface** : icônes vectorielles Lucide (sprite SVG inclus dans le gabarit, `templates/_icons.html`, 40 icônes, licence ISC) via la macro Jinja `icon()`, plus aucun émoji ; marque ELA, barre de navigation (libellés repliés en icônes sous 1060 px), badges de rôle (« Administrateur », « Enseignant »), cartes d'indicateurs, tableaux, états vides et messages homogènes, thème clair/sombre ; logo ELA (`public/logo_light.png` / `logo_dark.png`) en marque et sur la page de connexion, `public/favicon.png` en icône de site (dossier `public/` servi sous `/backoffice/brand/`, copié dans l'image Docker) ; macros partagées (`_macros.html` : `icon`, `badge`, `page_head`, `empty`) pour les lots suivants.
+- Extra `pip install -e ".[backoffice]"` (fastapi, uvicorn, jinja2, python-multipart, itsdangerous — versions déjà imposées par Chainlit) ; `httpx` en dev.
+- Tests : 21 tests hors ligne (`tests/test_backoffice.py` : fabrique, préfixe, sonde, redirections, CSRF, échecs et verrouillage, rôles, cookie altéré ou étranger, compte désactivé/rétrogradé, déconnexion, primitives de session, fournisseur local) et 3 tests PostgreSQL (`tests/test_backoffice_db.py` : migration, audit, tableau de bord, connexion réelle bcrypt).
+
+### Modifié
+- `tests/conftest.py` purge aussi `AUTH_*` et `BACKOFFICE_*` ; `.env.example`, README et `docs/DEPLOIEMENT_VPS.md` documentent le nouveau service.
+
+### Corrigé
+- Tests hermétiques : `ela.config` ne fixait plus le chemin du `.env` à l'import du module mais à l'appel de `get_settings()` (`Settings(_env_file=find_env_file())`). Un module de test important `ela.config` au chargement (`test_sandbox.py`) faisait lire le `.env` réel du poste (`SANDBOX_URL` défini → trois tests de l'atelier en échec).
+- `test_runner_enforces_memory_limit` séparé et ignoré sous Windows (les limites mémoire du bac à sable reposent sur `resource.setrlimit`, POSIX seulement).
+
 ## [Unreleased] — Consolidation
 
 ### Corrigé

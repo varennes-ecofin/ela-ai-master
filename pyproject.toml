@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ela-ai"
-version = "2.0.0a11"
+version = "2.0.0a12"
 description = "ELA — Econometrics Learning Assistant (RAG chatbot for master-level econometrics courses)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
@@ -48,12 +48,21 @@ admin = [
   "pandas==2.3.3",
   "plotly==6.9.0",
 ]
+backoffice = [
+  # fastapi / uvicorn / python-multipart are already pinned by chainlit (same versions)
+  "fastapi==0.158.1",
+  "uvicorn[standard]==0.54.0",
+  "python-multipart==0.0.32",
+  "jinja2==3.1.6",
+  "itsdangerous==2.2.0",
+]
 tracing = [
   "langfuse>=4,<6",
 ]
 dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
+  "httpx>=0.27",
   "ruff>=0.6",
   "pre-commit>=3.8",
 ]
@@ -91,6 +100,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D"]
 "apps/admin/*" = ["D", "E501"]
+"apps/backoffice/*" = ["B008"]  # `Depends(...)` in defaults is the FastAPI idiom
 "src/ela/retrieval/store.py" = ["D102"]      # ChunkStore protocol documents the interface once
 "src/ela/retrieval/rerank.py" = ["D102"]     # Reranker protocol documents the interface once
 "src/ela/retrieval/embeddings.py" = ["D102"]

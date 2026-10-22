@@ -1,0 +1,46 @@
+{% from "_macros.html" import icon, badge with context %}
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Backoffice{% endblock %} · ELA</title>
+  <link rel="stylesheet" href="{{ prefix }}/static/app.css">
+  <link rel="icon" type="image/png" href="{{ prefix }}/brand/favicon.png">
+  <script src="{{ prefix }}/static/htmx.min.js" defer></script>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+{% include "_icons.html" %}
+<header class="topbar">
+  <a class="brand" href="{{ prefix }}/">
+    <picture>
+      <source srcset="{{ prefix }}/brand/logo_dark.png" media="(prefers-color-scheme: dark)">
+      <img class="brand-logo" src="{{ prefix }}/brand/logo_light.png" alt="ELA" width="36" height="36">
+    </picture>
+    <span class="brand-sub">Backoffice</span>
+  </a>
+  {% if session %}
+  <nav class="nav" aria-label="Sections">
+    <a href="{{ prefix }}/" class="{% if active == 'home' %}active{% endif %}">{{ icon("layout-dashboard") }}<span>Tableau de bord</span></a>
+    <span class="nav-soon" title="Lot 5.2 — à venir">{{ icon("users") }}<span>Utilisateurs</span></span>
+    <span class="nav-soon" title="Lot 5.3 — à venir">{{ icon("book-open") }}<span>Cours</span></span>
+    <span class="nav-soon" title="Lot 5.4 — à venir">{{ icon("activity") }}<span>Activité</span></span>
+    <span class="nav-soon" title="Lot 5.5 — à venir">{{ icon("flask-conical") }}<span>Évaluation</span></span>
+  </nav>
+  <div class="who">
+    <span class="who-name">{{ icon("user-round") }}{{ session.identifier }}</span>
+    {{ badge(session.role) }}
+    <form method="post" action="{{ prefix }}/logout" class="inline">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-ghost" title="Se déconnecter">{{ icon("log-out") }}<span>Déconnexion</span></button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+<main class="container">
+  {% block content %}{% endblock %}
+</main>
+<footer class="footer">ELA — Econometrics Learning Assistant · {{ app_version }} · {{ ela_env }}</footer>
+</body>
+</html>

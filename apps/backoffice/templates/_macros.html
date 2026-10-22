@@ -1,0 +1,23 @@
+{#- Shared building blocks. Import with: {% from "_macros.html" import icon, badge, page_head, empty with context %} -#}
+
+{%- macro icon(name, cls="") -%}
+<svg class="icon {{ cls }}" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"/></svg>
+{%- endmacro -%}
+
+{%- macro badge(role) -%}
+<span class="badge badge-{{ role }}">{{ {"admin": "Administrateur", "supervisor": "Enseignant", "student": "Étudiant"}.get(role, role) }}</span>
+{%- endmacro -%}
+
+{%- macro page_head(title, description=None, icon_name=None) -%}
+<div class="page-head">
+  <div>
+    <h1>{% if icon_name %}{{ icon(icon_name, "h-icon") }}{% endif %}{{ title }}</h1>
+    {% if description %}<p class="page-desc">{{ description }}</p>{% endif %}
+  </div>
+  <div class="page-actions">{{ caller() if caller else "" }}</div>
+</div>
+{%- endmacro -%}
+
+{%- macro empty(message, icon_name="info") -%}
+<p class="empty">{{ icon(icon_name) }}<span>{{ message }}</span></p>
+{%- endmacro -%}

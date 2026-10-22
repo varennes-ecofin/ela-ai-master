@@ -4,4 +4,6 @@
   a sync engine for command-line tools.
 * ``ela.db.users`` — user accounts: authentication, profiles, quotas.
 * ``ela.db.threads`` — small helpers on Chainlit's ``threads`` table.
+* ``ela.db.audit`` — backoffice audit log (``admin_audit``).
+* ``ela.db.dashboard`` — figures of the backoffice home page.
 """

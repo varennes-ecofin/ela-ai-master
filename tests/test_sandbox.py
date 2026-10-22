@@ -44,6 +44,10 @@ def test_runner_enforces_cpu_and_wall_limits():
     assert cpu.status == "timeout" and "interrompue" in cpu.stderr
     wall = run_python("import time\ntime.sleep(5)", RunLimits(timeout_seconds=1))
     assert wall.status == "timeout" and "1 s" in wall.stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="memory limits rely on resource.setrlimit (POSIX only)")
+def test_runner_enforces_memory_limit():
     mem = run_python("x = bytearray(900_000_000)", RunLimits(memory_bytes=256 * 1024 * 1024))
     assert mem.status in {"error", "timeout"}
 

@@ -4,7 +4,7 @@
 # Deux modes de déploiement :
 #  - serveur avec un reverse proxy DÉJÀ en place (cas du VPS, où un Caddy
 #    sert déjà une autre application) : `docker compose up -d`
-#    → app et admin écoutent uniquement sur 127.0.0.1 (8000 / 8501) ;
+#    → app, admin et backoffice écoutent uniquement sur 127.0.0.1 (8000 / 8501 / 8502) ;
 #      ajouter l'extrait deploy/caddy-ela.snippet au Caddyfile existant.
 #  - serveur dédié sans reverse proxy : `docker compose --profile standalone up -d`
 #    → le service `caddy` ci-dessous prend les ports 80/443 (HTTPS automatique).
@@ -30,6 +30,7 @@ services:
     depends_on:
       - app
       - admin
+      - backoffice
 
   # --- Base de données (PostgreSQL 15 + extension pgvector, prête pour la phase 2) ---
   db:
@@ -115,6 +116,28 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - ADMIN_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.baseUrlPath", "admin"]
+    volumes:
+      - ./data:/app/data
+
+  # --- Nouveau backoffice (FastAPI + HTMX, phase 5) — servi par Caddy sous /backoffice ---
+  # Remplace progressivement Streamlit (/admin) ; sessions signées (BACKOFFICE_SECRET_KEY dans le .env).
+  backoffice:
+    build:
+      context: .
+      dockerfile: apps/backoffice/Dockerfile
+    container_name: ela-backoffice
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ELA_BACKOFFICE_PORT:-8502}:8080"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - ADMIN_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - LOG_JSON=true
     volumes:
       - ./data:/app/data
 

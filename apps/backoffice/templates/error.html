@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="card login">
+  <div class="login-head">
+    <span class="login-mark login-mark-warn">{{ icon("shield-alert") }}</span>
+    <h1>{{ title }}</h1>
+    <p class="muted">{{ message }}</p>
+  </div>
+  <a class="btn btn-ghost" href="{{ prefix }}/">{{ icon("layout-dashboard") }}<span>Retour au tableau de bord</span></a>
+</section>
+{% endblock %}

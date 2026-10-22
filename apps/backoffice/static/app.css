@@ -1,0 +1,116 @@
+/* ELA — backoffice. Sober admin look: system fonts, one accent, Lucide line icons, light/dark. */
+:root {
+  --bg: #f4f6f9; --card: #ffffff; --text: #1b2330; --muted: #6b7684; --line: #e3e7ed; --line-strong: #cfd6df;
+  --accent: #1f5fbf; --accent-hover: #184c99; --accent-text: #ffffff; --accent-soft: #e8f0fc;
+  --error-bg: #fcebeb; --error: #a11c1c; --notice-bg: #e9f2fd; --notice: #1d4f9b;
+  --admin-bg: #efe4f8; --admin: #6b2491; --supervisor-bg: #e1f3ea; --supervisor: #1b6a44; --student-bg: #e9ecf1; --student: #4f5a68;
+  --ok-bg: #e1f3ea; --ok: #1b6a44; --warn-bg: #fdf1dc; --warn: #8a5a00;
+  --radius: 10px; --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161c; --card: #1a2029; --text: #e5e9ef; --muted: #98a3b1; --line: #2a323d; --line-strong: #3a4452;
+    --accent: #7aa8f2; --accent-hover: #9dbdf5; --accent-text: #0d1522; --accent-soft: #1d2b42;
+    --error-bg: #3a1d1d; --error: #ff9b9b; --notice-bg: #1b2a3f; --notice: #9cc1f7;
+    --admin-bg: #35224a; --admin: #d9b8f0; --supervisor-bg: #1b3328; --supervisor: #9fdcbb; --student-bg: #262d37; --student: #b6c0cc;
+    --ok-bg: #1b3328; --ok: #9fdcbb; --warn-bg: #3a2d14; --warn: #f1c979; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, "Segoe UI", system-ui, Roboto, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", monospace; font-size: 0.9em; }
+.muted { color: var(--muted); }
+.num { text-align: right; }
+.nowrap { white-space: nowrap; }
+
+/* Icons (SVG sprite, stroke = currentColor) */
+.icon { width: 1.1em; height: 1.1em; vertical-align: -0.2em; flex: none; }
+h1 .h-icon { width: 1em; height: 1em; margin-right: 10px; color: var(--accent); vertical-align: -0.12em; }
+h2 .icon { margin-right: 8px; color: var(--muted); }
+
+/* Top bar */
+.topbar { display: flex; align-items: center; gap: 22px; overflow: hidden; padding: 0 24px; height: 56px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+.brand { display: flex; align-items: center; gap: 9px; color: var(--text); }
+.brand:hover { color: var(--text); }
+.brand picture { display: flex; }
+.brand-logo { width: 36px; height: 36px; object-fit: contain; display: block; }
+.brand-sub { color: var(--text); font-weight: 600; font-size: 0.95rem; letter-spacing: 0.01em; }
+.nav { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden; }
+.nav a, .nav-soon { display: inline-flex; align-items: center; gap: 7px; padding: 0 11px; height: 56px; white-space: nowrap; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; }
+.nav a:hover { color: var(--text); }
+.nav a.active { color: var(--text); border-bottom-color: var(--accent); }
+.nav-soon { opacity: 0.45; cursor: default; }
+.who { display: flex; align-items: center; gap: 12px; }
+.who-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.who-name .icon { color: var(--muted); }
+form.inline { display: inline; }
+
+/* Badges & tags */
+.badge { display: inline-block; font-size: 0.74rem; font-weight: 600; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; background: var(--student-bg); color: var(--student); white-space: nowrap; }
+.badge-admin { background: var(--admin-bg); color: var(--admin); }
+.badge-supervisor { background: var(--supervisor-bg); color: var(--supervisor); }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--student-bg); color: var(--student); font-size: 0.82rem; }
+.tag-login-ok { background: var(--ok-bg); color: var(--ok); }
+.tag-login-failed, .tag-login-locked { background: var(--warn-bg); color: var(--warn); }
+.tag-logout { background: var(--notice-bg); color: var(--notice); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 14px; border-radius: 8px; border: 1px solid transparent; font: inherit; font-weight: 600; cursor: pointer; line-height: 1.2; }
+.btn-primary { background: var(--accent); color: var(--accent-text); }
+.btn-primary:hover { background: var(--accent-hover); color: var(--accent-text); }
+.btn-ghost { background: transparent; color: var(--muted); border-color: transparent; padding: 6px 10px; }
+.btn-ghost:hover { color: var(--text); background: var(--accent-soft); }
+.btn-block { width: 100%; margin-top: 20px; padding: 10px; }
+
+/* Layout */
+.container { max-width: 1120px; margin: 0 auto; padding: 28px 20px 48px; }
+.footer { text-align: center; color: var(--muted); font-size: 0.82rem; padding: 12px 16px 28px; }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+h1 { font-size: 1.45rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.page-desc { margin: 4px 0 0; color: var(--muted); }
+.page-actions { display: flex; gap: 8px; }
+h2 { font-size: 1rem; font-weight: 650; margin: 0 0 12px; display: flex; align-items: center; }
+
+/* Cards, KPIs, tables */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--shadow); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.kpi { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; box-shadow: var(--shadow); }
+.kpi-icon { position: absolute; top: 14px; right: 14px; width: 20px; height: 20px; color: var(--muted); opacity: 0.8; }
+.kpi-value { font-size: 1.65rem; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; }
+.kpi-value small { display: block; font-size: 0.78rem; font-weight: 500; color: var(--muted); margin-top: 2px; }
+.kpi-label { color: var(--muted); font-size: 0.84rem; margin-top: 6px; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: var(--accent-soft); }
+.table th.num, .table td.num { text-align: right; }
+.empty { display: flex; align-items: center; gap: 8px; color: var(--muted); margin: 6px 0 2px; }
+
+/* Forms & messages */
+label { display: block; margin: 14px 0 5px; font-weight: 600; font-size: 0.92rem; }
+input[type=text], input[type=password] { width: 100%; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.error, .notice { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 8px; margin: 0 0 12px; }
+.error { background: var(--error-bg); color: var(--error); }
+.notice { background: var(--notice-bg); color: var(--notice); }
+.error .icon, .notice .icon { margin-top: 3px; }
+
+/* Login / error pages */
+.login { max-width: 420px; margin: 56px auto; padding: 28px 28px 24px; }
+.login-head { text-align: center; margin-bottom: 14px; }
+.login-head h1 { margin-top: 10px; }
+.login-head .muted { margin: 4px 0 0; }
+.login-logo { width: 84px; height: 84px; object-fit: contain; display: inline-block; }
+.login-mark { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); }
+.login-mark .icon { width: 22px; height: 22px; vertical-align: 0; }
+.login-mark-warn { background: var(--warn-bg); color: var(--warn); }
+
+@media (max-width: 1060px) { .nav a span, .nav-soon span { display: none; } .nav a, .nav-soon { padding: 0 9px; } }
+@media (max-width: 760px) {
+  .topbar { gap: 14px; padding: 0 14px; }
+  .brand-sub, .who-name, .btn-ghost span { display: none; }
+}

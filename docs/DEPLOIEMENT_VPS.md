@@ -1,9 +1,10 @@
 # ELA AI — Déploiement et mise à jour sur le VPS
 
 Procédure pour un VPS où **Caddy est déjà en place** pour une autre application.
-ELA tourne dans Docker (`docker-compose.yml`) ; `app` (Chainlit) et `admin`
-(Streamlit) n'écoutent que sur `127.0.0.1` (ports 8000 et 8501) et le Caddy
-existant les expose en HTTPS. Le service `sandbox` n'est joignable que par `app`.
+ELA tourne dans Docker (`docker-compose.yml`) ; `app` (Chainlit), `admin`
+(Streamlit) et `backoffice` (FastAPI, phase 5) n'écoutent que sur `127.0.0.1`
+(ports 8000, 8501 et 8502) et le Caddy existant les expose en HTTPS. Le service
+`sandbox` n'est joignable que par `app`.
 
 ## 1. Première installation
 
@@ -16,7 +17,7 @@ cp .env.example .env && nano .env        # voir § 3
 mkdir -p data/latex                        # déposer ici les cours (scp -r ... :/opt/ela-ai/data/latex/)
 docker compose build
 docker compose up -d db
-docker compose up -d app admin sandbox
+docker compose up -d app admin backoffice sandbox
 docker compose exec app ela-db upgrade                                   # schéma + migrations
 docker compose exec -it app ela-users create admin --role admin --level ALL
 docker compose exec app ela-ingest                                       # base de connaissances
@@ -63,6 +64,8 @@ régénérées automatiquement, leur clé contient l'empreinte du corpus).
 | `SANDBOX_DAILY_QUOTA` | `10` | exécutions par étudiant et par jour |
 | `CODE_REASONING_EFFORT` / `CODE_MAX_TOKENS` | `medium` / `4096` | fiabilité des scripts de l'atelier |
 | `CHAINLIT_ROOT_PATH` | `/ela` seulement en variante B | préfixe de chemin derrière Caddy |
+| `BACKOFFICE_SECRET_KEY` | 48 caractères aléatoires (`python -c "import secrets; print(secrets.token_urlsafe(48))"`) | signe les sessions du nouveau backoffice ; le service ne démarre pas sans |
+| `BACKOFFICE_ROOT_PATH` | `/backoffice` (`/ela/backoffice` en variante B) | préfixe d'URL du nouveau backoffice |
 | `LANGFUSE_*` | vides | jamais de traces étudiantes vers un cloud |
 | `DATABASE_URL` | ignorée | docker-compose la force vers le service `db` |
 
@@ -78,6 +81,9 @@ Les clés API (`CEREBRAS_API_KEY`, plus tard `ILAAS_*`) ne sont **que** dans le
    interprétation. 11ᵉ exécution → message de quota.
 3. `https://<site>/admin` (authentification basique Caddy) : onglet Pédagogie,
    sous-onglet Code.
+3b. `https://<site>/backoffice/` : connexion avec le compte `admin` (tableau de
+   bord, journal d'administration), refus d'un compte étudiant, déconnexion ;
+   `https://<site>/backoffice/healthz?deep=1` renvoie `"database": "ok"`.
 4. Isolation du bac à sable : dans le chat, demander « exécute `import socket;
    socket.create_connection(("1.1.1.1", 80), timeout=3)` » doit échouer
    (réseau interne sans sortie).
@@ -121,5 +127,18 @@ Séquence (chaque étape indique ce qu'elle doit afficher) :
 10. **Ingestion** : `docker compose exec app ela-ingest` — nombre de fichiers, de chunks, par niveau.
 11. **Caddy** (`/opt/caddy`) : ajouter `DOMAINE_ELA=ela.<domaine>` au `.env` de Caddy ; coller `deploy/caddy-ela.docker.snippet` à la fin du `Caddyfile` avec le hash de `docker compose exec app ela-hash --caddy` ; dans son `docker-compose.yml`, ajouter `"80:80"` aux ports de Caddy et retirer `disable_http_challenge` du bloc échecs (le port 80 est libre maintenant) ; `docker compose up -d` dans `/opt/caddy` puis `docker logs caddy --tail 20` : certificat obtenu pour le sous-domaine (le DNS doit déjà répondre : `dig +short ela.<domaine>`).
 12. **Vérifications** du § 4, puis rotation des mots de passe (§ 3 du README : `ela-users create …` réécrit un compte).
+
+## 7. Ajout du nouveau backoffice (phase 5, lot 5.1) sur le VPS
+
+1. `git pull` puis, dans le `.env` du serveur, ajouter `BACKOFFICE_SECRET_KEY=<48 caractères aléatoires>`
+   (laisser `BACKOFFICE_ROOT_PATH=/backoffice`, valeur par défaut).
+2. `cp deploy/docker-compose.override.vps.yml docker-compose.override.yml` (le fichier ajoute
+   `backoffice` au réseau `proxy`).
+3. `docker compose build backoffice && docker compose up -d backoffice` ; `docker compose exec app ela-db upgrade`
+   (migration `0009_admin_audit`) ; `docker compose ps` : `ela-backoffice` healthy.
+4. Caddy (`/opt/caddy`) : dans le bloc `{$DOMAINE_ELA}` du `Caddyfile`, ajouter avant le `handle` final
+   le bloc `@backoffice` de `deploy/caddy-ela.docker.snippet` (`reverse_proxy backoffice:8080`, sans
+   `basic_auth`), puis `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+5. Vérification § 4, point 3b. Streamlit reste disponible sur `/admin` jusqu'à parité.
 
 Retour arrière : `docker compose down` dans `/home/debian/ela-ai-master`, `git checkout <ancien commit>` (ou le `.env.ancien` + `docker-compose.yml.backup`), `docker compose up -d`. La base n'est pas modifiée de façon destructive par les migrations (tables ajoutées seulement).

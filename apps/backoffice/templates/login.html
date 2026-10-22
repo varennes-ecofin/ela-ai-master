@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block title %}Connexion{% endblock %}
+{% block content %}
+<section class="card login">
+  <div class="login-head">
+    <picture>
+      <source srcset="{{ prefix }}/brand/logo_dark.png" media="(prefers-color-scheme: dark)">
+      <img class="login-logo" src="{{ prefix }}/brand/logo_light.png" alt="ELA" width="84" height="84">
+    </picture>
+    <h1>Connexion</h1>
+    <p class="muted">Espace réservé aux enseignants et administrateurs.</p>
+  </div>
+  {% if logged_out %}<p class="notice">{{ icon("info") }}<span>Vous êtes déconnecté.</span></p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
+  <form method="post" action="{{ prefix }}/login" autocomplete="on">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label for="identifier">Identifiant</label>
+    <input id="identifier" type="text" name="identifier" value="{{ identifier or '' }}" required autofocus autocapitalize="off" autocomplete="username">
+    <label for="password">Mot de passe</label>
+    <input id="password" type="password" name="password" required autocomplete="current-password">
+    <button type="submit" class="btn btn-primary btn-block">Se connecter</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 2.0 — 2026-10-21
+> **Version** : 2.1 — 2026-10-21
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phases 0 à 3 validées (18/10) · Phase 4 en cours : 4a (Quiz 2.0) et 4b (socratique) validés, 4c (suivi) validé (+ correctifs quiz du 18/10), 4d (fiches + suggestions) validé, 4e (Atelier Code 2.0) validé · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · prochaines étapes : Phases 5 et 6 à cadrer
+> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : **lot 5.1 (socle du backoffice FastAPI) livré le 21/10, à tester** · lots 5.2 → 5.6 à suivre, puis Phase 6
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -241,12 +241,19 @@ Correctifs du 18/10 (retours de test avec un profil étudiant M1) : sorties stru
 
 Critères d'acceptation : un étudiant M1 enchaîne quiz → erreur → explication → exercice guidé sans quitter le fil ; ses résultats apparaissent dans son tableau de bord et dans le backoffice.
 
-### Phase 5 — Backoffice et observabilité (3–4 sessions)
+### Phase 5 — Backoffice et observabilité (3–4 sessions) — *cadrée le 21/10/2026*
 
-1. Nouveau backoffice **FastAPI + Jinja2 + HTMX** (si confirmé) : auth session, rôles, CRUD utilisateurs/quotas, gestion des cours et **jobs d'ingestion** (progression en direct), activité, feedbacks, lecteur de conversations.
-2. Pages nouvelles : **Évaluation** (lancer `ela-eval`, comparer deux configurations) ; **Pédagogie** (questions fréquentes par chapitre, notions échouées aux quiz, sujets hors corpus demandés ⇒ signal pour les cours).
-3. Sauvegardes Postgres automatisées, healthchecks, journal applicatif centralisé.
-4. Streamlit retiré une fois la parité atteinte.
+**Décisions du 21/10** : rôle enseignant = `supervisor` existant (consultation) et `admin` (tout) ; authentification cible **CAS** (`auth.univ-orleans.fr/cas`) avec **création automatique des comptes étudiants** au premier login (règle de niveau M1/M2 à partir des attributs CAS, sinon niveau par défaut corrigé dans le backoffice), abstraction `ela.auth` partagée avec Chainlit, seul le fournisseur local implémenté pour l'instant ; **import CSV** des étudiants (identifiant, niveau) conservé au lot 5.2 au cas où la DSI contraindrait l'usage du CAS ; nouveau backoffice sur `ela.varennes-vps.com/backoffice` (même sous-domaine), Streamlit maintenu sur `/admin` jusqu'à parité ; **pas** d'authentification basique Caddy devant le nouveau backoffice (connexion dans l'application, incompatible avec CAS sinon) ; une seule image `backoffice` (torch CPU inclus) qui exécutera les jobs d'ingestion en processus ; journal d'audit dès le socle ; sessions en cookie signé ; HTMX vendu dans le dépôt. Phase de test de la production limitée aux étudiants M1 et M2 du master ESA.
+
+Lots (chacun livré testé) :
+
+1. ✅ **5.1 Socle** (livré le 21/10, version `2.0.0a12`) : `apps/backoffice/` (FastAPI + Jinja2 + HTMX), connexion sur les comptes `users` (`admin`, `supervisor`), cookie de session signé, CSRF, verrouillage après échecs, compte revérifié à chaque requête, `ela.auth` (`AuthProvider`, `Identity`, `ProvisioningPolicy`, `AUTH_PROVIDER=local`), table `admin_audit` (migration `0009`), accueil (indicateurs, dernières conversations, journal), `/backoffice/healthz`, service `backoffice` dans compose + extraits Caddy, 21 tests hors ligne + 3 PostgreSQL.
+2. **5.2 Utilisateurs et quotas** : liste, création, modification, réinitialisation de mot de passe, activation, quotas, **import CSV** (identifiant, niveau M1/M2, mot de passe initial), audit de chaque action (reprend `ela-users` et la vue Streamlit).
+3. **5.3 Cours et ingestion** : arborescence `data/latex/{M1|M2|Commun}/<Cours>`, dépôt de `.tex`, job d'ingestion en tâche de fond avec progression (table `jobs`, HTMX), état de la base de connaissances, invalidation du cache des fiches.
+4. **5.4 Activité, pédagogie, feedbacks, conversations** : parité avec les vues Streamlit (Chart.js), puis retrait de Streamlit.
+5. **5.5 Évaluation** : `ela-eval answer` / `retrieval` depuis l'interface (job), historique des rapports, comparaison ; `ela-eval code` (évaluation de l'Atelier Code pour comparer les modèles).
+6. **5.6 Exploitation** : sauvegardes PostgreSQL automatisées, healthchecks exposés, journal applicatif consultable, documentation.
+7. Ensuite : fournisseur **CAS** (`AUTH_PROVIDER=cas`) + provisioning automatique côté Chainlit et backoffice.
 
 ### Phase 6 — Préparation production université / ILaaS (2 sessions, le moment venu)
 
@@ -264,7 +271,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 Variante « résultat visible vite » : 0 → 2 (embeddings/reranker uniquement) → 3 → 1 → 4 → 5.
 
-Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** (fin P2) ajout d'un cours en direct + rapport d'évaluation avant/après ; **J3** (fin P3) agent avec étapes et sources visibles — livré le 17/10 ; **J4** (fin P4) parcours étudiant complet.
+Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** (fin P2) ajout d'un cours en direct + rapport d'évaluation avant/après ; **J3** (fin P3) agent avec étapes et sources visibles — livré le 17/10 ; **J4** (fin P4) parcours étudiant complet — validé le 19/10 ; **J5** (fin P5) backoffice FastAPI à parité, Streamlit retiré.
 
 ---
 

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% set active = 'home' %}
+{% block title %}Tableau de bord{% endblock %}
+{% block content %}
+{{ page_head("Tableau de bord", "Vue d'ensemble des comptes, de l'activité et de la base de connaissances.") }}
+
+<div id="overview" hx-get="{{ prefix }}/partials/overview" hx-trigger="every 60s" hx-swap="innerHTML">
+  {% include "partials/overview.html" %}
+</div>
+
+{% if session.is_admin %}
+<section class="card">
+  <h2>{{ icon("scroll-text") }}Journal d'administration</h2>
+  {% if audit_rows %}
+  <table class="table">
+    <thead><tr><th>Quand</th><th>Qui</th><th>Action</th><th>Cible</th><th>Détails</th><th>Adresse</th></tr></thead>
+    <tbody>
+    {% for r in audit_rows %}
+      <tr>
+        <td class="mono nowrap">{{ r.at | dt }}</td>
+        <td>{{ r.actor }}</td>
+        <td><code class="tag tag-{{ r.action | replace('.', '-') }}">{{ r.action }}</code></td>
+        <td>{{ r.target or '' }}</td>
+        <td class="muted">{% for k, v in (r.details or {}).items() %}{{ k }}={{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+        <td class="mono muted">{{ r.ip or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ empty("Aucune action enregistrée pour l'instant.", "clipboard-list") }}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

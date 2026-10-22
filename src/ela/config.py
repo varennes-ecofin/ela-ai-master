@@ -70,8 +70,12 @@ class Settings(BaseSettings):
     to start the application.
     """
 
+    # The ``.env`` file is NOT fixed here: it is located when :func:`get_settings`
+    # builds the instance (``_env_file=find_env_file()``), so that importing this
+    # module never binds the process to a file (tests stay hermetic, ``ELA_ENV_FILE``
+    # can be changed before the first ``get_settings()`` call).
     model_config = SettingsConfigDict(
-        env_file=find_env_file(),
+        env_file=None,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -264,6 +268,28 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Authentication and backoffice (Phase 5)
+    # ------------------------------------------------------------------
+    auth_provider: Literal["local", "cas"] = Field(
+        default="local",
+        description="local = password accounts of the users table; cas = university CAS (not implemented yet).",
+    )
+    backoffice_secret_key: SecretStr | None = Field(
+        default=None,
+        description="Secret used to sign the backoffice session cookie (required to start the backoffice).",
+    )
+    backoffice_root_path: str = Field(
+        default="/backoffice",
+        description="URL prefix under which the backoffice is served (same locally and behind the reverse proxy).",
+    )
+    backoffice_session_hours: float = Field(default=8.0, description="Lifetime of a backoffice session.")
+    backoffice_timezone: str = Field(default="Europe/Paris", description="Time zone used to display timestamps.")
+    backoffice_login_max_failures: int = Field(
+        default=5, description="Failed logins per identifier before a temporary lock (0 = never lock)."
+    )
+    backoffice_login_lock_minutes: float = Field(default=15.0, description="Duration of the login lock.")
+
+    # ------------------------------------------------------------------
     # Evaluation (ela-eval answer)
     # ------------------------------------------------------------------
     eval_judge_model: str | None = Field(
@@ -352,6 +378,12 @@ class Settings(BaseSettings):
         return None if value.lower() in {"", "none", "off", "false"} else value
 
     @property
+    def backoffice_prefix(self) -> str:
+        """``BACKOFFICE_ROOT_PATH`` normalised: leading slash, no trailing slash, empty for the root."""
+        value = (self.backoffice_root_path or "").strip().strip("/")
+        return f"/{value}" if value else ""
+
+    @property
     def sandbox_enabled(self) -> bool:
         """Whether student code may be executed (``SANDBOX_URL`` set)."""
         return bool(self.sandbox_url and self.sandbox_url.strip())
@@ -418,7 +450,10 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the process-wide ``Settings`` instance (cached).
 
+    The ``.env`` file is located now (``ELA_ENV_FILE`` or the first ``.env``
+    walking up from the current directory); process variables keep priority.
+
     Returns:
         The validated settings object.
     """
-    return Settings()
+    return Settings(_env_file=find_env_file())
