@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head with context %}
+{% set active = 'courses' %}
+{% block title %}Job #{{ job.id }}{% endblock %}
+{% block content %}
+{% call page_head("Job #" ~ job.id, labels.get(job.mode, job.mode) if job.mode else job.kind) %}
+  <a class="btn btn-ghost" href="{{ prefix }}/jobs">{{ icon("clock") }}<span>Historique</span></a>
+  <a class="btn btn-ghost" href="{{ prefix }}/courses">{{ icon("book-open") }}<span>Cours</span></a>
+{% endcall %}
+<section class="card">
+  {% include "jobs/_status.html" %}
+</section>
+{% endblock %}

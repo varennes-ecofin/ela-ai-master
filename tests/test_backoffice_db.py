@@ -247,3 +247,101 @@ async def test_cli_import(db, tmp_path, capsys):
     assert "1 compte(s) créé(s)" in out and creds.exists()
     password = creds.read_text(encoding="utf-8").splitlines()[1].split(";")[1]
     assert (await users.authenticate(ident, password)) is not None
+
+
+# --- lot 5.3 : jobs table and knowledge-base state on PostgreSQL ------------------------------
+
+
+async def test_jobs_table_roundtrip(db):
+    from ela.db import jobs
+
+    await db.execute("DELETE FROM jobs WHERE started_by LIKE 'pytest_%'")
+    actor = f"pytest_{uuid.uuid4().hex[:6]}"
+    job_id = await asyncio.to_thread(jobs.create_sync, jobs.KIND_INGEST, mode="dry_run", target=None, started_by=actor)
+    job = await jobs.get_job(job_id)
+    assert job is not None and job.status == "queued" and job.active and job.started_by == actor
+    assert (await jobs.active_job()).id == job_id
+    await asyncio.to_thread(jobs.start_sync, job_id)
+    await asyncio.to_thread(jobs.append_log_sync, job_id, "ligne 1\n", progress=40, step="Vectorisation")
+    await asyncio.to_thread(jobs.append_log_sync, job_id, "ligne 2\n")
+    job = await jobs.get_job(job_id)
+    assert (
+        job.status == "running"
+        and job.log == "ligne 1\nligne 2\n"
+        and job.progress == 40
+        and job.step == "Vectorisation"
+    )
+    assert job.duration_seconds is not None and job.duration_seconds >= 0
+    await asyncio.to_thread(jobs.finish_sync, job_id, status="success", result={"total": 3, "dry_run": True})
+    job = await jobs.get_job(job_id)
+    assert job.status == "success" and job.progress == 100 and job.result == {"total": 3, "dry_run": True}
+    assert job.finished_at is not None and not job.active
+    listed = await jobs.list_jobs(limit=5)
+    assert listed and listed[0].id == job_id and listed[0].log == ""  # listing omits the log
+    assert (await jobs.last_finished()).id == job_id and await jobs.active_job() is None
+
+    # a job left running by a previous process is marked interrupted at startup
+    other = await asyncio.to_thread(jobs.create_sync, jobs.KIND_INGEST, mode="full", target=None, started_by=actor)
+    await asyncio.to_thread(jobs.start_sync, other)
+    assert await jobs.mark_interrupted() == 1
+    job = await jobs.get_job(other)
+    assert job.status == "interrupted" and "redémarrage" in job.error
+    await db.execute("DELETE FROM jobs WHERE started_by LIKE 'pytest_%'")
+
+
+def test_knowledge_base_on_pgvector(tmp_path):
+    """Ingest the fixture corpus with the hash embedding, then read it back through ``state``."""
+    from sqlalchemy import create_engine, text
+
+    from ela.config import Settings
+    from ela.courses import catalog, state
+    from ela.ingestion import pipeline
+    from ela.retrieval.store import PgVectorStore
+    from hashemb import HashEmb
+    from latex_fixture import make_course_tree
+
+    engine = create_engine(TEST_URL.replace("postgresql://", "postgresql+psycopg2://"))
+    with engine.connect() as conn:
+        if not conn.execute(text("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'")).scalar():
+            pytest.skip("pgvector not available on the test server")
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS rag_chunks"))
+    store = PgVectorStore(engine, dim=32)
+    store.ensure_schema()
+    latex = make_course_tree(tmp_path)
+    settings = Settings(_env_file=None, database_url=TEST_URL, embedding_dim=32)
+    result = pipeline.run(
+        source_dir=str(latex), store=store, embeddings=HashEmb(32), settings=settings, log=lambda m: None
+    )
+    assert result.added > 0
+
+    kb = state.knowledge_base(store)
+    assert kb.error is None and kb.backend == "pgvector" and kb.total == result.total
+    keys = {c.key for c in kb.courses}
+    assert {"M1/Univariate_Time_Series", "M2/Research_Econometrics", "Commun/Général"} == keys
+    uts = kb.course("M1", "Univariate_Time_Series")
+    assert uts.chunks > 0 and "slide" in uts.by_type and uts.updated_at is not None
+    assert kb.by_level["M1"] == uts.chunks
+
+    tree = catalog.scan(latex)
+    diag = {d.key: d.status for d in state.diagnose(tree, kb)}
+    assert (
+        diag["M1/Univariate_Time_Series"] == state.OK and diag["Commun/Général"] == state.ORPHAN
+    )  # loose file, no folder
+
+    # move the course on disk: the old key becomes an orphan until the next ingestion
+    catalog.move_course(latex, "M1", "Univariate_Time_Series", "M2")
+    diag = {d.key: d.status for d in state.diagnose(catalog.scan(latex), kb)}
+    assert diag["M1/Univariate_Time_Series"] == state.ORPHAN and diag["M2/Univariate_Time_Series"] == state.TO_INGEST
+    result = pipeline.run(
+        source_dir=str(latex), store=store, embeddings=HashEmb(32), settings=settings, log=lambda m: None
+    )
+    assert result.removed == uts.chunks and result.added == uts.chunks
+    kb = state.knowledge_base(store)
+    assert (
+        kb.course("M1", "Univariate_Time_Series") is None
+        and kb.course("M2", "Univariate_Time_Series").chunks == uts.chunks
+    )
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS rag_chunks"))
+    engine.dispose()

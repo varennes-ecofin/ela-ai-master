@@ -3,6 +3,17 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [2.0.0a14] — 2026-10-26 — Phase 5, lot 5.3 : cours et ingestion
+
+### Ajouté
+- **Backoffice → Cours** : arborescence `data/latex/{M1|M2|Commun}/<Cours>/` avec, par cours, fichiers `.tex`, taille, chunks en base, dernière indexation et état (indexé / à ingérer / vide) ; indicateurs de la base de connaissances (chunks par niveau, backend) ; **diagnostic disque vs base** (cours à ingérer, chunks orphelins d'un cours supprimé ou déplacé, dossiers vides) ; création d'un cours.
+- **Page d'un cours** : liste des fichiers (téléchargement, suppression), **dépôt** de fichiers `.tex`, `.sty`, `.cls`, `.bib` ou d'une archive `.zip` (sous-dossiers conservés, dossier englobant retiré, fichiers parasites et chemins sortants ignorés, 20 Mo max), statistiques du cours en base (par type et par document), **déplacement vers un autre niveau** (le dossier est renommé puis une mise à jour incrémentale ré-indexe le cours ; refusé pendant une ingestion), suppression du cours.
+- **Ingestion en tâche de fond** : boutons Vérifier / Mise à jour incrémentale / Reconstruction complète (confirmation) ; un seul job à la fois ; table `jobs` (migration `0010` : type, mode, cible, état, lancé par, début/fin, progression, journal, résultat JSON) ; l'ingestion tourne dans un **processus enfant** (`python -I -u -m ela.ingestion.pipeline --result …`, le modèle d'embeddings n'occupe la mémoire que pendant le job) dont la sortie est copiée en base au fil de l'eau ; **progression en direct** (barre et dernière ligne, fragment HTMX toutes les 2 s) ; page de chaque job avec résultat (analysés, vectorisés, inchangés, supprimés, total) et journal complet ; **historique des jobs** ; jobs laissés « en cours » par un redémarrage marqués interrompus.
+- **Annales** : racine `data/annales/` (`ANNALES_SOURCE_DIR`) avec la même arborescence, dépôt et gestion des fichiers possibles, pas encore d'indexation (lot « Annales » à venir).
+- `ela-ingest --result fichier.json` écrit le résultat de l'ingestion ; `stats()` sur les deux stores (chunks par niveau, cours, document, type) ; `ela.courses.catalog`, `ela.courses.state`, `ela.db.jobs`, `ela.jobs.runner`.
+- `supervisor` : arborescence, état, jobs en lecture seule. Audit : `course.create`, `course.upload`, `course.delete_file`, `course.delete`, `course.move`, `ingest.start`.
+- Tests : catalogue et diagnostic (6), exécuteur de jobs avec un processus enfant simulé (5), pages cours/jobs hors ligne (7), table `jobs` et état de la base sur PostgreSQL avec un corpus ingéré (2).
+
 ## [2.0.0a13] — 2026-10-22 — Phase 5, lot 5.2 : utilisateurs et quotas
 
 ### Ajouté

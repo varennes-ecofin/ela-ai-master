@@ -24,7 +24,7 @@
   <nav class="nav" aria-label="Sections">
     <a href="{{ prefix }}/" class="{% if active == 'home' %}active{% endif %}">{{ icon("layout-dashboard") }}<span>Tableau de bord</span></a>
     <a href="{{ prefix }}/users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>Utilisateurs</span></a>
-    <span class="nav-soon" title="Lot 5.3 — à venir">{{ icon("book-open") }}<span>Cours</span></span>
+    <a href="{{ prefix }}/courses" class="{% if active == 'courses' %}active{% endif %}">{{ icon("book-open") }}<span>Cours</span></a>
     <span class="nav-soon" title="Lot 5.4 — à venir">{{ icon("activity") }}<span>Activité</span></span>
     <span class="nav-soon" title="Lot 5.5 — à venir">{{ icon("flask-conical") }}<span>Évaluation</span></span>
   </nav>

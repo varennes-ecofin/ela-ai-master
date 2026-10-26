@@ -1,0 +1,34 @@
+{% from "_macros.html" import icon with context %}
+{% if active_job %}
+<div class="job-live" hx-get="{{ prefix }}/courses/partials/job" hx-trigger="every 2s" hx-swap="outerHTML">
+  <div class="job-head">
+    <span class="pill pill-info">en cours</span>
+    <strong>{{ active_job.target or labels.get(active_job.mode, active_job.mode) or active_job.kind }}</strong>
+    <span class="muted">lancé par {{ active_job.started_by }}{% if active_job.started_at %} à {{ active_job.started_at | dt('%H:%M:%S') }}{% endif %}</span>
+    <a href="{{ prefix }}/jobs/{{ active_job.id }}">journal complet</a>
+  </div>
+  <div class="progress"><div class="progress-bar" style="width: {{ active_job.progress }}%"></div></div>
+  <p class="muted mono job-step">{{ active_job.step or '…' }}</p>
+</div>
+{% else %}
+<div class="job-live">
+  {% if session.is_admin %}
+  <form method="post" action="{{ prefix }}/ingest" class="ingest-form">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <button type="submit" name="mode" value="dry_run" class="btn btn-ghost">{{ icon("search") }}<span>Vérifier</span></button>
+    <button type="submit" name="mode" value="incremental" class="btn btn-primary">{{ icon("refresh-cw") }}<span>Mise à jour incrémentale</span></button>
+    <button type="submit" name="mode" value="full" class="btn btn-danger" onclick="return confirm('Reconstruction complète : tous les embeddings seront recalculés (plusieurs minutes). Continuer ?');">{{ icon("triangle-alert") }}<span>Reconstruction complète</span></button>
+  </form>
+  {% endif %}
+  {% if last_job %}
+  <p class="muted job-last">
+    Dernier job : <a href="{{ prefix }}/jobs/{{ last_job.id }}">#{{ last_job.id }}</a> —
+    {% if last_job.status == 'success' %}<span class="pill pill-ok">réussi</span>{% elif last_job.status == 'failed' %}<span class="pill pill-warn">échoué</span>{% else %}<span class="pill pill-off">{{ last_job.status }}</span>{% endif %}
+    {{ last_job.target or labels.get(last_job.mode, last_job.mode) or last_job.kind }},
+    {{ last_job.finished_at | dt }}{% if last_job.result.dry_run %} · {{ last_job.result.parsed }} chunks analysés{% elif last_job.result.total is defined %} · {{ last_job.result.total }} chunks en base{% endif %}
+  </p>
+  {% else %}
+  <p class="muted job-last">Aucune ingestion lancée depuis le backoffice pour l'instant.</p>
+  {% endif %}
+</div>
+{% endif %}

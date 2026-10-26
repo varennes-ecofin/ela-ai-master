@@ -141,4 +141,16 @@ Séquence (chaque étape indique ce qu'elle doit afficher) :
    `basic_auth`), puis `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
 5. Vérification § 4, point 3b. Streamlit reste disponible sur `/admin` jusqu'à parité.
 
+## 8. Lots 5.2 et 5.3 (comptes, cours, ingestion depuis le backoffice)
+
+1. `git pull`, `docker compose build backoffice && docker compose up -d backoffice`, puis
+   `docker compose exec app ela-db upgrade` (migration `0010_jobs`).
+2. `https://<site>/backoffice/users` : comptes et import CSV ; `https://<site>/backoffice/courses` :
+   cours, dépôt de fichiers, ingestion (Vérifier / Mise à jour incrémentale / Reconstruction complète).
+   L'ingestion tourne dans un processus enfant du conteneur `backoffice` ; `./data` (cours, cache
+   `hf-cache` du modèle d'embeddings) est partagé avec `app`, donc aucun second téléchargement du modèle.
+3. Le chat voit les nouveaux chunks à la question suivante (store partagé) ; les fiches de révision en
+   cache sont régénérées automatiquement (empreinte du corpus). `docker compose exec app ela-ingest`
+   reste utilisable en ligne de commande.
+
 Retour arrière : `docker compose down` dans `/home/debian/ela-ai-master`, `git checkout <ancien commit>` (ou le `.env.ancien` + `docker-compose.yml.backup`), `docker compose up -d`. La base n'est pas modifiée de façon destructive par les migrations (tables ajoutées seulement).

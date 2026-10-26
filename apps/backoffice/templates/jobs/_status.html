@@ -1,0 +1,32 @@
+{% from "_macros.html" import icon with context %}
+<div id="job-status" {% if job.active %}hx-get="{{ prefix }}/jobs/{{ job.id }}/partial" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="job-head">
+    {% if job.status == 'running' %}<span class="pill pill-info">en cours</span>
+    {% elif job.status == 'queued' %}<span class="pill pill-off">en attente</span>
+    {% elif job.status == 'success' %}<span class="pill pill-ok">réussi</span>
+    {% elif job.status == 'failed' %}<span class="pill pill-warn">échoué</span>
+    {% else %}<span class="pill pill-off">{{ job.status }}</span>{% endif %}
+    <strong>{{ job.target or labels.get(job.mode, job.mode) or job.kind }}</strong>
+    <span class="muted">lancé par {{ job.started_by }}{% if job.started_at %}, {{ job.started_at | dt('%d/%m %H:%M:%S') }}{% endif %}{% if job.duration_seconds is not none %} · {{ '%d' % job.duration_seconds }} s{% endif %}</span>
+  </div>
+  {% if job.active %}
+  <div class="progress"><div class="progress-bar" style="width: {{ job.progress }}%"></div></div>
+  <p class="muted mono job-step">{{ job.step or '…' }}</p>
+  {% endif %}
+  {% if job.error %}<p class="error">{{ icon("circle-alert") }}<span>{{ job.error }}</span></p>{% endif %}
+  {% if job.status == 'success' and job.result %}
+  <dl class="dl job-result">
+    {% if job.result.dry_run %}<dt>Mode</dt><dd>vérification seule (rien d'écrit)</dd>{% endif %}
+    <dt>Chunks analysés</dt><dd>{{ job.result.parsed }}</dd>
+    {% if not job.result.dry_run %}
+    <dt>Vectorisés</dt><dd>{{ job.result.added }}</dd>
+    <dt>Inchangés</dt><dd>{{ job.result.unchanged }}</dd>
+    <dt>Supprimés</dt><dd>{{ job.result.removed }}</dd>
+    <dt>Total en base</dt><dd>{{ job.result.total }} ({{ job.result.backend }})</dd>
+    {% endif %}
+    <dt>Durée</dt><dd>{{ '%.0f' % (job.result.seconds or 0) }} s</dd>
+    {% if job.result.warnings %}<dt>Avertissements</dt><dd>{% for w in job.result.warnings %}{{ w }}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
+  </dl>
+  {% endif %}
+  <pre class="log" id="job-log">{{ job.log or '(aucune sortie pour l’instant)' }}</pre>
+</div>

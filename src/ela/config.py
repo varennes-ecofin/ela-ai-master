@@ -169,6 +169,10 @@ class Settings(BaseSettings):
     # Knowledge base: ingestion, embeddings, store, retrieval, reranking
     # ------------------------------------------------------------------
     latex_source_dir: str = "./data/latex"
+    annales_source_dir: str = Field(
+        default="./data/annales",
+        description="Past exams and corrections (same {level}/{course} layout); stored now, ingested by a later lot.",
+    )
     chunk_target_chars: int = Field(default=1200, description="Target size of manuscript text chunks.")
     chunk_max_chars: int = Field(default=2500, description="Hard limit above which a slide/section is split.")
     ingest_include_notes: bool = Field(default=True, description="Attach beamer \\note{} speaker notes to slides.")

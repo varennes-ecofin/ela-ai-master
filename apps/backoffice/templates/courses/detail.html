@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% set active = 'courses' %}
+{% block title %}{{ course.level }}/{{ course.name }}{% endblock %}
+{% block content %}
+{% call page_head(course.name, root_label ~ " · niveau " ~ course.level) %}
+  <a class="btn btn-ghost" href="{{ prefix }}/courses">{{ icon("chevron-right", "flip") }}<span>Tous les cours</span></a>
+{% endcall %}
+
+{% if flash %}<p class="notice">{{ icon("circle-check") }}<span>{{ flash }}</span></p>{% endif %}
+{% if report %}
+<section class="card">
+  <h2>{{ icon("upload") }}Dépôt</h2>
+  <ul class="list">
+    {% for f in report.written %}<li><span class="pill pill-ok">ajouté</span> <code>{{ f }}</code></li>{% endfor %}
+    {% for f in report.replaced %}<li><span class="pill pill-info">remplacé</span> <code>{{ f }}</code></li>{% endfor %}
+    {% for f in report.skipped %}<li><span class="pill pill-off">ignoré</span> <code>{{ f }}</code></li>{% endfor %}
+  </ul>
+  {% if root == 'latex' %}<p class="muted">Lancez une <strong>mise à jour incrémentale</strong> pour que ces fichiers soient pris en compte par ELA.</p>{% endif %}
+</section>
+{% endif %}
+
+<div class="grid-2 align-start">
+  <section class="card">
+    <h2>{{ icon("file-text") }}Fichiers&nbsp;<span class="muted">({{ course.files | length }}, {{ human_size(course.size) }})</span></h2>
+    {% if course.files %}
+    <table class="table">
+      <thead><tr><th>Fichier</th><th class="num">Taille</th><th>Modifié</th><th></th></tr></thead>
+      <tbody>
+      {% for f in course.files %}
+        <tr>
+          <td><a href="{{ prefix }}/courses/{{ root }}/{{ course.level }}/{{ course.name }}/files/{{ f.path }}">{{ f.path }}</a>{% if f.ingested and root == 'latex' %} <span class="pill pill-ok" title="Fichier .tex de premier niveau, lu par l'ingestion">source</span>{% endif %}</td>
+          <td class="num">{{ human_size(f.size) }}</td>
+          <td class="mono muted">{{ f.modified | dt }}</td>
+          <td class="num">
+            {% if session.is_admin %}
+            <form method="post" action="{{ prefix }}/courses/{{ root }}/{{ course.level }}/{{ course.name }}/delete-file" class="inline" onsubmit="return confirm('Supprimer {{ f.path }} ?');">
+              <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+              <input type="hidden" name="path" value="{{ f.path }}">
+              <button type="submit" class="btn btn-ghost btn-sm" title="Supprimer">{{ icon("trash-2") }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ empty("Aucun fichier : déposez les sources LaTeX du cours.", "upload") }}
+    {% endif %}
+  </section>
+
+  <div>
+    {% if root == 'latex' %}
+    <section class="card">
+      <h2>{{ icon("database") }}Dans la base de connaissances</h2>
+      {% if stats %}
+      <dl class="dl">
+        <dt>Chunks</dt><dd>{{ stats.chunks }}</dd>
+        <dt>Par type</dt><dd>{% for t, n in stats.by_type.items() | sort %}<code>{{ t }}</code> {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+        <dt>Par document</dt><dd>{% for k, n in stats.by_kind.items() | sort %}<code>{{ k }}</code> {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+        <dt>Dernière indexation</dt><dd class="mono">{{ stats.updated_at | dt if stats.updated_at else '—' }}</dd>
+      </dl>
+      {% else %}
+      <p class="muted">Aucun chunk : ce cours n'a pas encore été ingéré.</p>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if session.is_admin %}
+    <section class="card">
+      <h2>{{ icon("upload") }}Déposer des fichiers</h2>
+      <form method="post" action="{{ prefix }}/courses/{{ root }}/{{ course.level }}/{{ course.name }}/upload" enctype="multipart/form-data">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+        <input type="file" name="files" multiple accept=".tex,.sty,.cls,.bib,.zip" required>
+        <p class="hint">Fichiers {{ allowed }} ou une archive .zip (sous-dossiers conservés) ; un fichier existant est remplacé.</p>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">{{ icon("upload") }}<span>Déposer</span></button></div>
+      </form>
+    </section>
+
+    <section class="card danger">
+      <h2>{{ icon("triangle-alert") }}Déplacer ou supprimer</h2>
+      <div class="danger-row">
+        <div>
+          <strong>Déplacer vers un autre niveau</strong>
+          <p class="muted">{% if root == 'latex' %}Le dossier est déplacé puis le cours ré-indexé automatiquement (mise à jour incrémentale).{% else %}Le dossier est déplacé.{% endif %}</p>
+        </div>
+        <form method="post" action="{{ prefix }}/courses/{{ root }}/{{ course.level }}/{{ course.name }}/move" class="inline-form">
+          <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+          <select name="to_level">{% for lvl in other_levels %}<option value="{{ lvl }}">{{ lvl }}</option>{% endfor %}</select>
+          <button type="submit" class="btn btn-primary" {% if busy and root == 'latex' %}disabled title="Une ingestion est en cours"{% endif %}>Déplacer</button>
+        </form>
+      </div>
+      <div class="danger-row">
+        <div>
+          <strong>Supprimer le cours</strong>
+          <p class="muted">Tous ses fichiers sont effacés{% if root == 'latex' %} ; ses chunks disparaîtront à la prochaine mise à jour incrémentale{% endif %}. Irréversible.</p>
+        </div>
+        <form method="post" action="{{ prefix }}/courses/{{ root }}/{{ course.level }}/{{ course.name }}/delete" onsubmit="return confirm('Supprimer définitivement le cours {{ course.level }}/{{ course.name }} et ses {{ course.files | length }} fichier(s) ?');">
+          <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-danger">{{ icon("trash-2") }}<span>Supprimer</span></button>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

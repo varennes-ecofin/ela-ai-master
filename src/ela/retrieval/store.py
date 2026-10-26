@@ -98,6 +98,10 @@ class ChunkStore(Protocol):
 
     def all_documents(self, levels: list[str] | None = None) -> list[Document]: ...
 
+    def stats(self) -> list[dict[str, Any]]:
+        """Chunk counts per ``(level, course, doc_kind, chunk_type)`` with the latest ``updated_at`` (or ``None``)."""
+        ...
+
     def search(
         self,
         query: str,
@@ -291,6 +295,19 @@ class PgVectorStore:
                 {"levels": levels} if levels else {},
             ).all()
         return [self._to_document(r) for r in rows]
+
+    def stats(self) -> list[dict[str, Any]]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    f"SELECT level, course, doc_kind, chunk_type, count(*) AS n, max(updated_at) AS updated_at "
+                    f"FROM {RAG_TABLE} GROUP BY level, course, doc_kind, chunk_type ORDER BY level, course"
+                )
+            ).all()
+        return [
+            {"level": r[0], "course": r[1], "doc_kind": r[2], "chunk_type": r[3], "n": int(r[4]), "updated_at": r[5]}
+            for r in rows
+        ]
 
     def search(
         self,
@@ -508,6 +525,22 @@ class ChromaStore:
                     tokens = [_tokenize(d.page_content) for d in docs]
                     self._bm25_cache[key] = (BM25Okapi(tokens) if tokens else None, docs)
         return self._bm25_cache[key]
+
+    def stats(self) -> list[dict[str, Any]]:
+        counts: dict[tuple[str, str, str, str], int] = {}
+        for doc in self.all_documents():
+            m = doc.metadata
+            key = (
+                str(m.get("level", "")),
+                str(m.get("course", "")),
+                str(m.get("doc_kind", "")),
+                str(m.get("chunk_type", "")),
+            )
+            counts[key] = counts.get(key, 0) + 1
+        return [
+            {"level": k[0], "course": k[1], "doc_kind": k[2], "chunk_type": k[3], "n": n, "updated_at": None}
+            for k, n in sorted(counts.items())
+        ]
 
     def search(
         self,

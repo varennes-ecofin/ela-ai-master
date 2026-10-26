@@ -29,6 +29,13 @@ USER_DEACTIVATE = "user.deactivate"
 USER_PURGE = "user.purge"
 USERS_IMPORT = "users.import"
 ACCOUNT_PASSWORD = "account.password"
+# Lot 5.3 — courses and ingestion
+COURSE_CREATE = "course.create"
+COURSE_UPLOAD = "course.upload"
+COURSE_DELETE_FILE = "course.delete_file"
+COURSE_DELETE = "course.delete"
+COURSE_MOVE = "course.move"
+INGEST_START = "ingest.start"
 
 
 async def record(

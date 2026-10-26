@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% set active = 'courses' %}
+{% block title %}Cours{% endblock %}
+{% block content %}
+{% call page_head("Cours et base de connaissances", "Fichiers LaTeX des cours, état de l'index et ingestion.") %}
+  <a class="btn btn-ghost" href="{{ prefix }}/jobs">{{ icon("clock") }}<span>Historique des jobs</span></a>
+{% endcall %}
+
+{% if flash %}<p class="notice">{{ icon("circle-check") }}<span>{{ flash }}</span></p>{% endif %}
+
+<section class="card">
+  <h2>{{ icon("refresh-cw") }}Ingestion</h2>
+  {% include "courses/_job_panel.html" %}
+</section>
+
+<div class="kpis kpis-4">
+  <div class="kpi">{{ icon("database", "kpi-icon") }}<span class="kpi-value">{% if kb.error %}—{% else %}{{ kb.total }}{% endif %}</span><span class="kpi-label">Chunks indexés ({{ kb.backend }})</span></div>
+  {% for lvl in levels %}
+  <div class="kpi"><span class="kpi-value">{{ kb.by_level.get(lvl, 0) }}</span><span class="kpi-label">Chunks {{ lvl }}</span></div>
+  {% endfor %}
+</div>
+{% if kb.error %}<p class="error">{{ icon("circle-alert") }}<span>Base de connaissances inaccessible : {{ kb.error }}</span></p>{% endif %}
+
+{% if problems %}
+<section class="card">
+  <h2>{{ icon("triangle-alert") }}À traiter</h2>
+  <ul class="list">
+    {% for d in problems %}
+    <li>
+      {% if d.status == 'to_ingest' %}<span class="pill pill-warn">à ingérer</span> <strong>{{ d.key }}</strong> : {{ d.tex_files }} fichier(s) .tex sur le disque, aucun chunk en base.
+      {% elif d.status == 'orphan' %}<span class="pill pill-off">orphelin</span> <strong>{{ d.key }}</strong> : {{ d.chunks }} chunks en base sans dossier (cours supprimé ou déplacé) — une mise à jour incrémentale les retirera.
+      {% else %}<span class="pill pill-off">vide</span> <strong>{{ d.key }}</strong> : dossier sans fichier .tex.
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>{{ icon("book-open") }}Cours&nbsp;<span class="muted mono">({{ tree.root }})</span></h2>
+  {% if not tree.exists %}
+  {{ empty("Le dossier des cours n'existe pas encore : il sera créé au premier cours.", "info") }}
+  {% endif %}
+  {% for lvl in levels %}
+  <h3 class="level-title">{{ lvl }} <span class="muted">({{ tree.courses[lvl] | length }} cours)</span></h3>
+  {% if tree.courses[lvl] %}
+  <table class="table">
+    <thead><tr><th>Cours</th><th class="num">Fichiers .tex</th><th class="num">Taille</th><th class="num">Chunks</th><th>Dernière indexation</th><th>État</th></tr></thead>
+    <tbody>
+    {% for c in tree.courses[lvl] %}
+      {% set st = kb_courses.get(c.key) %}
+      <tr>
+        <td><a href="{{ prefix }}/courses/latex/{{ lvl }}/{{ c.name }}">{{ c.name }}</a></td>
+        <td class="num">{{ c.tex_count }}<span class="muted"> / {{ c.files | length }}</span></td>
+        <td class="num">{{ human_size(c.size) }}</td>
+        <td class="num">{% if st %}{{ st.chunks }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="mono muted">{% if st and st.updated_at %}{{ st.updated_at | dt }}{% else %}—{% endif %}</td>
+        <td>{% if st %}<span class="pill pill-ok">indexé</span>{% elif c.tex_count %}<span class="pill pill-warn">à ingérer</span>{% else %}<span class="pill pill-off">vide</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Aucun cours.</p>
+  {% endif %}
+  {% endfor %}
+  {% if tree.stray %}<p class="hint">Ignorés par l'ingestion : {% for s in tree.stray %}<code>{{ s }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% if session.is_admin %}
+  <form method="post" action="{{ prefix }}/courses/new" class="inline-form">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <input type="hidden" name="root" value="latex">
+    <select name="level">{% for lvl in levels %}<option value="{{ lvl }}">{{ lvl }}</option>{% endfor %}</select>
+    <input type="text" name="name" placeholder="Nom_Du_Cours" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{1,63}" autocapitalize="off">
+    <button type="submit" class="btn btn-primary">{{ icon("plus") }}<span>Créer un cours</span></button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>{{ icon("file-text") }}Annales&nbsp;<span class="muted mono">({{ annales.root }})</span></h2>
+  <p class="muted">Sujets d'examen et corrigés, rangés comme les cours ; ils ne sont pas encore indexés (lot « Annales » à venir).</p>
+  {% set any_annales = annales.all_courses | length %}
+  {% if any_annales %}
+  <table class="table">
+    <thead><tr><th>Niveau</th><th>Cours</th><th class="num">Fichiers</th><th class="num">Taille</th></tr></thead>
+    <tbody>
+    {% for c in annales.all_courses %}
+      <tr><td>{{ c.level }}</td><td><a href="{{ prefix }}/courses/annales/{{ c.level }}/{{ c.name }}">{{ c.name }}</a></td><td class="num">{{ c.files | length }}</td><td class="num">{{ human_size(c.size) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if session.is_admin %}
+  <form method="post" action="{{ prefix }}/courses/new" class="inline-form">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <input type="hidden" name="root" value="annales">
+    <select name="level">{% for lvl in levels %}<option value="{{ lvl }}">{{ lvl }}</option>{% endfor %}</select>
+    <input type="text" name="name" placeholder="Nom_Du_Cours" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{1,63}" autocapitalize="off">
+    <button type="submit" class="btn btn-ghost">{{ icon("plus") }}<span>Créer un dossier d'annales</span></button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

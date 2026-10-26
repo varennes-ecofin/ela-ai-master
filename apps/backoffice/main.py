@@ -34,12 +34,15 @@ from backoffice.oneshot import OneShotStore
 from backoffice.rendering import BRAND_DIR, STATIC_DIR, render
 from backoffice.routes import account as account_routes
 from backoffice.routes import auth as auth_routes
+from backoffice.routes import courses as courses_routes
 from backoffice.routes import health as health_routes
 from backoffice.routes import home as home_routes
 from backoffice.routes import users as users_routes
 from backoffice.security import LoginLimiter, SessionSigner
 from ela.auth import build_auth_provider
 from ela.config import Settings, get_settings
+from ela.db import jobs as jobs_db
+from ela.jobs.runner import JobRunner
 from ela.log import configure_logging
 
 logger = logging.getLogger("ela.backoffice")
@@ -90,6 +93,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("Backoffice %s ready under %s/ (auth=%s)", app.state.version, prefix, app.state.auth_provider.name)
+        if await jobs_db.mark_interrupted():
+            logger.warning("Jobs left running by a previous process were marked interrupted")
         yield
         from ela.db import engine as db_engine
 
@@ -105,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.limiter = LoginLimiter(s.backoffice_login_max_failures, s.backoffice_login_lock_minutes * 60)
     app.state.auth_provider = build_auth_provider(s)
     app.state.oneshot = OneShotStore(ttl_seconds=15 * 60)
+    app.state.jobs = JobRunner(source_dir=s.latex_source_dir)
 
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -114,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     root.include_router(home_routes.router)
     root.include_router(users_routes.router)
     root.include_router(account_routes.router)
+    root.include_router(courses_routes.router)
     app.include_router(root)
     app.mount(f"{prefix}/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     if BRAND_DIR.is_dir():

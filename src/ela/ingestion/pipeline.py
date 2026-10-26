@@ -21,7 +21,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ela.config import Settings, get_settings
@@ -216,7 +216,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=settings.latex_source_dir,
         help=f"Dossier source LaTeX (défaut : {settings.latex_source_dir}).",
     )
+    parser.add_argument(
+        "--result", metavar="FICHIER", help="Écrit le résultat (compteurs, statistiques, avertissements) en JSON."
+    )
     return parser
+
+
+def write_result(result: IngestResult, path: str) -> None:
+    """Write an :class:`IngestResult` as JSON (consumed by the backoffice job runner)."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(asdict(result), f, ensure_ascii=False, indent=1)
 
 
 def main() -> None:
@@ -226,10 +235,12 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
     args = build_arg_parser().parse_args()
     try:
-        run(source_dir=args.source_dir, dry_run=args.dry_run, full=args.full, dump=args.dump)
+        result = run(source_dir=args.source_dir, dry_run=args.dry_run, full=args.full, dump=args.dump)
     except RuntimeError as exc:
         print(f"\n❌ {exc}")
         sys.exit(1)
+    if args.result:
+        write_result(result, args.result)
 
 
 if __name__ == "__main__":

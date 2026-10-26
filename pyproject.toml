@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ela-ai"
-version = "2.0.0a13"
+version = "2.0.0a14"
 description = "ELA — Econometrics Learning Assistant (RAG chatbot for master-level econometrics courses)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
