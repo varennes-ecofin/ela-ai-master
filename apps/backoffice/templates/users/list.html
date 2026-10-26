@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head with context %}
+{% set active = 'users' %}
+{% block title %}Utilisateurs{% endblock %}
+{% block content %}
+{% call page_head("Utilisateurs", "Comptes étudiants et enseignants, quotas et consommation du jour.") %}
+  {% if session.is_admin %}
+  <a class="btn btn-ghost" href="{{ prefix }}/users/import">{{ icon("upload") }}<span>Importer un CSV</span></a>
+  <a class="btn btn-primary" href="{{ prefix }}/users/new">{{ icon("plus") }}<span>Nouveau compte</span></a>
+  {% endif %}
+{% endcall %}
+
+{% if flash %}<p class="notice">{{ icon("circle-check") }}<span>{{ flash }}</span></p>{% endif %}
+
+<form class="filters" hx-get="{{ prefix }}/users" hx-target="#users-table" hx-swap="innerHTML" hx-trigger="input changed delay:300ms from:#q, change" hx-push-url="true">
+  <label class="filter"><span class="filter-label">Recherche</span>
+    <input id="q" type="search" name="q" value="{{ filters.q }}" placeholder="identifiant…" autocomplete="off"></label>
+  <label class="filter"><span class="filter-label">Rôle</span>
+    <select name="role"><option value="">Tous</option>{% for r in roles %}<option value="{{ r }}" {% if filters.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></label>
+  <label class="filter"><span class="filter-label">Niveau</span>
+    <select name="level"><option value="">Tous</option>{% for l in levels %}<option value="{{ l }}" {% if filters.level == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+  <label class="filter"><span class="filter-label">État</span>
+    <select name="state"><option value="">Tous</option><option value="active" {% if filters.state == 'active' %}selected{% endif %}>Actifs</option><option value="inactive" {% if filters.state == 'inactive' %}selected{% endif %}>Inactifs</option></select></label>
+</form>
+
+<section class="card">
+  <div id="users-table">{% include "users/_table.html" %}</div>
+</section>
+{% endblock %}

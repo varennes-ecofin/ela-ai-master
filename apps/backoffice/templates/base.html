@@ -23,13 +23,13 @@
   {% if session %}
   <nav class="nav" aria-label="Sections">
     <a href="{{ prefix }}/" class="{% if active == 'home' %}active{% endif %}">{{ icon("layout-dashboard") }}<span>Tableau de bord</span></a>
-    <span class="nav-soon" title="Lot 5.2 — à venir">{{ icon("users") }}<span>Utilisateurs</span></span>
+    <a href="{{ prefix }}/users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>Utilisateurs</span></a>
     <span class="nav-soon" title="Lot 5.3 — à venir">{{ icon("book-open") }}<span>Cours</span></span>
     <span class="nav-soon" title="Lot 5.4 — à venir">{{ icon("activity") }}<span>Activité</span></span>
     <span class="nav-soon" title="Lot 5.5 — à venir">{{ icon("flask-conical") }}<span>Évaluation</span></span>
   </nav>
   <div class="who">
-    <span class="who-name">{{ icon("user-round") }}{{ session.identifier }}</span>
+    <a class="who-name" href="{{ prefix }}/account/password" title="Changer mon mot de passe">{{ icon("user-round") }}{{ session.identifier }}</a>
     {{ badge(session.role) }}
     <form method="post" action="{{ prefix }}/logout" class="inline">
       <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">

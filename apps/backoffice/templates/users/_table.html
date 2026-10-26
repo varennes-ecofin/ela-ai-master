@@ -1,0 +1,31 @@
+{% from "_macros.html" import icon, badge, empty with context %}
+{% if accounts %}
+<p class="muted table-count">{{ accounts | length }} compte(s)</p>
+<table class="table">
+  <thead>
+    <tr>
+      <th>Identifiant</th><th>Rôle</th><th>Niveau</th><th>État</th>
+      {% if session.is_admin %}<th class="num">Quota</th><th class="num">Aujourd'hui</th><th>Mot de passe</th>{% endif %}
+      <th>Dernière connexion</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for a in accounts %}
+    <tr class="{% if not a.is_active %}row-inactive{% endif %}">
+      <td><a href="{{ prefix }}/users/{{ a.identifier }}">{{ a.identifier }}</a></td>
+      <td>{{ badge(a.role) }}</td>
+      <td>{{ a.level }}</td>
+      <td>{% if a.is_active %}<span class="pill pill-ok">actif</span>{% else %}<span class="pill pill-off">inactif</span>{% endif %}</td>
+      {% if session.is_admin %}
+      <td class="num">{% if a.unlimited %}<span class="muted">∞</span>{% else %}{{ a.daily_quota }}{% endif %}</td>
+      <td class="num">{{ a.messages_today }}{% if not a.unlimited and a.messages_today >= a.daily_quota %} <span class="pill pill-warn">quota atteint</span>{% endif %}</td>
+      <td>{% if a.has_password %}<span class="muted">défini</span>{% else %}<span class="pill pill-warn">absent</span>{% endif %}</td>
+      {% endif %}
+      <td class="mono muted">{{ a.last_login | dt if a.last_login else '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+{{ empty("Aucun compte ne correspond à ces critères.", "users") }}
+{% endif %}

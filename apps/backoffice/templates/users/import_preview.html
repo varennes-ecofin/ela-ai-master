@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head with context %}
+{% set active = 'users' %}
+{% block title %}Import — vérification{% endblock %}
+{% block content %}
+{{ page_head("Import — vérification", "Fichier « " ~ (filename or 'sans nom') ~ "» : rien n'a encore été écrit.") }}
+
+{% for e in plan.errors %}<p class="error">{{ icon("circle-alert") }}<span>{{ e }}</span></p>{% endfor %}
+
+<div class="kpis kpis-4">
+  <div class="kpi"><span class="kpi-value">{{ plan.n_create }}</span><span class="kpi-label">À créer</span></div>
+  <div class="kpi"><span class="kpi-value">{{ plan.n_update }}</span><span class="kpi-label">À mettre à jour</span></div>
+  <div class="kpi"><span class="kpi-value">{{ plan.n_skip }}</span><span class="kpi-label">Ignorés</span></div>
+  <div class="kpi"><span class="kpi-value {% if plan.n_error %}text-warn{% endif %}">{{ plan.n_error }}</span><span class="kpi-label">En erreur</span></div>
+</div>
+
+{% if plan.rows %}
+<section class="card">
+  <table class="table">
+    <thead><tr><th class="num">Ligne</th><th>Identifiant</th><th>Niveau</th><th>Rôle</th><th class="num">Quota</th><th>Mot de passe</th><th>Résultat</th></tr></thead>
+    <tbody>
+    {% for r in plan.rows %}
+      <tr class="row-{{ r.action }}">
+        <td class="num mono">{{ r.line }}</td>
+        <td>{{ r.identifier or r.raw_identifier }}{% if r.raw_identifier and r.identifier != r.raw_identifier|lower %} <span class="muted">({{ r.raw_identifier }})</span>{% endif %}</td>
+        <td>{{ r.level or '—' }}</td>
+        <td>{{ r.role if r.action != 'error' else '—' }}</td>
+        <td class="num">{% if r.action == 'error' %}—{% elif r.quota is none %}∞{% else %}{{ r.quota }}{% endif %}</td>
+        <td>{% if r.action in ('create', 'update') %}{% if r.password %}fourni{% elif r.action == 'create' %}<span class="muted">généré</span>{% else %}<span class="muted">inchangé</span>{% endif %}{% else %}—{% endif %}</td>
+        <td>
+          {% if r.action == 'create' %}<span class="pill pill-ok">création</span>
+          {% elif r.action == 'update' %}<span class="pill pill-info">mise à jour</span>
+          {% elif r.action == 'skip' %}<span class="pill pill-off">ignoré</span>
+          {% else %}<span class="pill pill-warn">erreur</span>{% endif %}
+          <span class="muted">{{ r.message }}</span>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<div class="form-actions">
+  <a class="btn btn-ghost" href="{{ prefix }}/users/import">{{ icon("upload") }}<span>Choisir un autre fichier</span></a>
+  {% if token %}
+  <form method="post" action="{{ prefix }}/users/import/{{ token }}/apply">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-primary">{{ icon("circle-check") }}<span>Confirmer : créer {{ plan.n_create }} compte(s){% if plan.n_update %}, mettre à jour {{ plan.n_update }}{% endif %}</span></button>
+  </form>
+  {% else %}
+  <span class="muted">Aucune ligne exploitable : corrigez le fichier.</span>
+  {% endif %}
+</div>
+{% endblock %}

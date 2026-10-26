@@ -69,6 +69,8 @@ ela-users check                                   # connexion + schéma
 ela-users create admin --role admin --level ALL   # mot de passe demandé au clavier
 ela-users create etudiant1 --level M1 --quota 50
 ela-users list
+ela-users import etudiants.csv --dry-run              # vérifier un CSV (identifier;level[;password;role;quota])
+ela-users import etudiants.csv --credentials mdp.csv  # créer les comptes, mots de passe générés → mdp.csv
 ```
 
 `ela-db upgrade` crée les tables Chainlit (`users`, `threads`, `steps`, `elements`, `feedbacks`) et les colonnes de comptes ELA sur une base vide, et complète sans rien casser une base existante. Les migrations sont dans `src/ela/db/migrations/` (`ela-db history`, `ela-db current`).
@@ -105,7 +107,7 @@ cd apps/admin && streamlit run app.py    # backoffice Streamlit : http://localho
 
 ### Backoffice (FastAPI + HTMX)
 
-`apps/backoffice/` remplace progressivement Streamlit (phase 5) : FastAPI + Jinja2 + HTMX, icônes Lucide (sprite SVG inclus dans les pages), aucun actif externe. Connexion avec un compte de la table `users` de rôle `admin` (tout) ou `supervisor` (consultation) ; les étudiants sont refusés. Sessions dans un cookie signé (`BACKOFFICE_SECRET_KEY`, 8 h par défaut), jeton CSRF sur chaque formulaire, verrouillage temporaire après cinq échecs, compte revérifié à chaque requête (désactiver ou rétrograder un compte prend effet immédiatement). Chaque action est inscrite dans la table `admin_audit` (migration `0009`), visible sur l'accueil pour les `admin`. L'application est servie sous `BACKOFFICE_ROOT_PATH` (`/backoffice`) en local comme derrière Caddy ; `/backoffice/healthz` (`?deep=1` pour vérifier la base) sert de sonde. Le fournisseur d'identité est une abstraction (`ela.auth`, `AUTH_PROVIDER=local`) prévue pour accueillir le CAS de l'université avec création automatique des comptes.
+`apps/backoffice/` remplace progressivement Streamlit (phase 5) : FastAPI + Jinja2 + HTMX, icônes Lucide (sprite SVG inclus dans les pages), aucun actif externe. Connexion avec un compte de la table `users` de rôle `admin` (tout) ou `supervisor` (consultation) ; les étudiants sont refusés. Sessions dans un cookie signé (`BACKOFFICE_SECRET_KEY`, 8 h par défaut), jeton CSRF sur chaque formulaire, verrouillage temporaire après cinq échecs, compte revérifié à chaque requête (désactiver ou rétrograder un compte prend effet immédiatement). Chaque action est inscrite dans la table `admin_audit` (migration `0009`), visible sur l'accueil pour les `admin`. **Utilisateurs** : liste filtrable, fiche, création (mot de passe saisi ou généré, affiché une seule fois), rôle/niveau/quota, réinitialisation, désactivation, suppression d'un compte sans activité, **import CSV** avec prévisualisation (`identifier;level[;password;role;quota]`, adresse universitaire tronquée avant le `@`, mots de passe générés remis une seule fois) ; politique de mots de passe : 8 caractères, un chiffre, un caractère spécial. L'application est servie sous `BACKOFFICE_ROOT_PATH` (`/backoffice`) en local comme derrière Caddy ; `/backoffice/healthz` (`?deep=1` pour vérifier la base) sert de sonde. Le fournisseur d'identité est une abstraction (`ela.auth`, `AUTH_PROVIDER=local`) prévue pour accueillir le CAS de l'université avec création automatique des comptes.
 
 ### Évaluation
 

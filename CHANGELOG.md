@@ -3,6 +3,20 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [2.0.0a13] — 2026-10-22 — Phase 5, lot 5.2 : utilisateurs et quotas
+
+### Ajouté
+- **Backoffice → Utilisateurs** : tableau filtrable (recherche, rôle, niveau, état ; fragment HTMX) avec quota, consommation du jour (« quota atteint »), état du mot de passe et dernière connexion ; fiche de compte (profil, résumé d'activité : conversations, questions, quiz, exercices, exécutions de code) ; création (mot de passe saisi ou **généré et affiché une seule fois**) ; modification du rôle, du niveau et du quota ; réinitialisation du mot de passe ; désactivation / réactivation ; **suppression** réservée aux comptes sans aucune activité (confirmation). Garde-fous : impossible de changer son propre rôle, de désactiver ou supprimer son propre compte, de rétrograder le dernier administrateur actif. `supervisor` : lecture seule, sans quotas ni mots de passe.
+- **Import CSV** (`/backoffice/users/import`) : dépôt du fichier (`;` ou `,`, UTF-8 avec ou sans BOM, 2 Mo max), niveau et quota par défaut, option « mettre à jour les comptes existants » (cellules vides = valeurs actuelles conservées) ; **prévisualisation** ligne par ligne (création / mise à jour / ignoré / erreur, identifiant normalisé — une adresse `@etu.univ-orleans.fr` est tronquée avant le `@`) puis confirmation ; mots de passe générés pour les lignes sans mot de passe, **remis une seule fois** (liste à l'écran + lien de téléchargement CSV à usage unique, 15 min, jamais stockés). Même moteur en ligne de commande : `ela-users import fichier.csv [--dry-run] [--level M1] [--quota 50] [--update-existing] [--credentials mdp.csv]`.
+- **Mon mot de passe** (`/backoffice/account/password`) pour les comptes `admin` et `supervisor` (ancien mot de passe exigé).
+- **Politique de mots de passe** (`ela.auth.passwords`) : 8 caractères minimum, un chiffre et un caractère spécial — appliquée au backoffice, à l'import et à `ela-users create` / `set-password` ; génération de mots de passe lisibles (sans caractères ambigus).
+- `ela.db.users` : `Account`, `list_accounts`, `get_account`, `create_account`, `update_account`, `set_password_hash`, `count_admins`, `activity_summary`, `purge_account`, normalisation et validation des identifiants (`^[a-z0-9][a-z0-9._-]{1,63}$`) ; `ela.accounts.importer` (`plan_import` / `apply_import`).
+- Audit : `user.create`, `user.update`, `user.password_reset`, `user.activate`, `user.deactivate`, `user.purge`, `users.import`, `account.password` (jamais de mot de passe dans les détails).
+- Tests : politique et génération (3), importateur (6), pages utilisateurs hors ligne (13), administration et import réels sur PostgreSQL + CLI (3).
+
+### Modifié
+- Jeton HTMX `X-CSRF-Token` honoré sur toutes les requêtes ; `OneShotStore` en mémoire (jetons à usage unique, 15 min) pour les prévisualisations d'import et les mots de passe générés.
+
 ## [2.0.0a12] — 2026-10-21 — Phase 5, lot 5.1 : socle du nouveau backoffice (FastAPI + Jinja2 + HTMX)
 
 ### Ajouté

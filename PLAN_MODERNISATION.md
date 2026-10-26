@@ -2,7 +2,7 @@
 
 > **Version** : 2.1 — 2026-10-21
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : **lot 5.1 (socle du backoffice FastAPI) livré le 21/10, à tester** · lots 5.2 → 5.6 à suivre, puis Phase 6
+> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : lot 5.1 (socle du backoffice FastAPI) validé le 22/10 · **lot 5.2 (utilisateurs, quotas, import CSV) livré le 22/10, à tester** · lots 5.3 → 5.6 à suivre, puis Phase 6
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -247,8 +247,8 @@ Critères d'acceptation : un étudiant M1 enchaîne quiz → erreur → explicat
 
 Lots (chacun livré testé) :
 
-1. ✅ **5.1 Socle** (livré le 21/10, version `2.0.0a12`) : `apps/backoffice/` (FastAPI + Jinja2 + HTMX), connexion sur les comptes `users` (`admin`, `supervisor`), cookie de session signé, CSRF, verrouillage après échecs, compte revérifié à chaque requête, `ela.auth` (`AuthProvider`, `Identity`, `ProvisioningPolicy`, `AUTH_PROVIDER=local`), table `admin_audit` (migration `0009`), accueil (indicateurs, dernières conversations, journal), `/backoffice/healthz`, service `backoffice` dans compose + extraits Caddy, 21 tests hors ligne + 3 PostgreSQL.
-2. **5.2 Utilisateurs et quotas** : liste, création, modification, réinitialisation de mot de passe, activation, quotas, **import CSV** (identifiant, niveau M1/M2, mot de passe initial), audit de chaque action (reprend `ela-users` et la vue Streamlit).
+1. ✅ **5.1 Socle** (livré le 21/10, validé le 22/10, version `2.0.0a12`) : `apps/backoffice/` (FastAPI + Jinja2 + HTMX), connexion sur les comptes `users` (`admin`, `supervisor`), cookie de session signé, CSRF, verrouillage après échecs, compte revérifié à chaque requête, `ela.auth` (`AuthProvider`, `Identity`, `ProvisioningPolicy`, `AUTH_PROVIDER=local`), table `admin_audit` (migration `0009`), accueil (indicateurs, dernières conversations, journal), `/backoffice/healthz`, service `backoffice` dans compose + extraits Caddy, 21 tests hors ligne + 3 PostgreSQL.
+2. ✅ **5.2 Utilisateurs et quotas** (livré le 22/10, version `2.0.0a13`) : liste filtrable, fiche avec activité, création (mot de passe saisi ou généré, affiché une seule fois), rôle/niveau/quota, réinitialisation, désactivation, purge des comptes sans activité, **import CSV** avec prévisualisation et identifiants remis une seule fois (`ela-users import` en CLI), mot de passe personnel, politique de mots de passe (8 caractères, chiffre, spécial), audit de chaque action. Décisions du 22/10 : identifiant = partie de l'adresse universitaire avant le `@` ; pas de suppression physique sauf compte sans activité ; `supervisor` en lecture seule sans quotas ni mots de passe ; changement de mot de passe des étudiants dans Chainlit reporté (lot CAS).
 3. **5.3 Cours et ingestion** : arborescence `data/latex/{M1|M2|Commun}/<Cours>`, dépôt de `.tex`, job d'ingestion en tâche de fond avec progression (table `jobs`, HTMX), état de la base de connaissances, invalidation du cache des fiches.
 4. **5.4 Activité, pédagogie, feedbacks, conversations** : parité avec les vues Streamlit (Chart.js), puis retrait de Streamlit.
 5. **5.5 Évaluation** : `ela-eval answer` / `retrieval` depuis l'interface (job), historique des rapports, comparaison ; `ela-eval code` (évaluation de l'Atelier Code pour comparer les modèles).

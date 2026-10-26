@@ -13,8 +13,12 @@ Usage (virtualenv activated, ``.env`` in the current directory)::
     ela-users create etudiant1 --role student --level M1 --quota 50
     ela-users set-password etudiant1
     ela-users deactivate etudiant1
+    ela-users import etudiants.csv --dry-run          # check the file
+    ela-users import etudiants.csv --credentials mdp.csv   # create, save generated passwords
 
-The password is asked interactively (never passed on the command line).
+The password is asked interactively (never passed on the command line) and
+must satisfy the policy of ``ela.auth.passwords`` (8 characters, a digit, a
+special character).
 The connection string comes from ``DATABASE_URL`` (settings); the driver
 suffix is adjusted automatically.
 """
@@ -22,14 +26,16 @@ suffix is adjusted automatically.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import getpass
 import os
 import sys
+from pathlib import Path
 
-import bcrypt
 import psycopg2
 import psycopg2.extras
 
+from ela.auth import passwords
 from ela.config import get_settings
 
 ROLES = ("student", "supervisor", "admin")
@@ -81,7 +87,7 @@ def _connect():
 
 def _hash_password(password: str) -> str:
     """Return the bcrypt hash (cost 12) of a plaintext password."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+    return passwords.hash_password(password)
 
 
 def _ask_password(confirm: bool = True) -> str:
@@ -99,6 +105,9 @@ def _ask_password(confirm: bool = True) -> str:
     pwd = getpass.getpass("Mot de passe : ")
     if not pwd:
         sys.exit("❌ Mot de passe vide.")
+    issues = passwords.problems(pwd)
+    if issues:
+        sys.exit("❌ Mot de passe trop faible : " + ", ".join(issues) + ".")
     if confirm and getpass.getpass("Confirmez     : ") != pwd:
         sys.exit("❌ Les deux saisies diffèrent.")
     return pwd
@@ -238,6 +247,56 @@ def cmd_deactivate(args) -> None:
     print(f"✅ Compte '{args.identifier}' désactivé.")
 
 
+def cmd_import(args) -> None:
+    """Create accounts in bulk from a CSV file (see ``ela.accounts.importer``)."""
+    from ela.accounts import importer
+
+    if sys.platform == "win32":  # asyncpg needs the selector loop on Windows
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    path = Path(args.file)
+    if not path.is_file():
+        sys.exit(f"❌ Fichier introuvable : {path}")
+    text = path.read_text(encoding="utf-8-sig")
+    quota = None if args.quota == 0 else args.quota
+
+    async def run() -> None:
+        from ela.db import engine
+
+        try:
+            plan = await importer.plan_import(
+                text, default_level=args.level, default_quota=quota, update_existing=args.update_existing
+            )
+            for err in plan.errors:
+                print(f"❌ {err}")
+            for row in plan.rows:
+                mark = {"create": "➕", "update": "✏️ ", "skip": "⏭️ ", "error": "❌"}[row.action]
+                print(f"{mark} ligne {row.line:<4} {row.identifier or row.raw_identifier:<24} {row.message}")
+            print(
+                f"\n{plan.n_create} à créer, {plan.n_update} à mettre à jour, {plan.n_skip} ignoré(s), "
+                f"{plan.n_error} en erreur."
+            )
+            if args.dry_run or not plan.applicable:
+                return
+            result = await importer.apply_import(plan)
+            print(f"✅ {len(result.created)} compte(s) créé(s), {len(result.updated)} mis à jour.")
+            for ident, why in result.failed:
+                print(f"❌ {ident} : {why}")
+            if result.credentials:
+                if args.credentials:
+                    Path(args.credentials).write_text(result.credentials_csv(), encoding="utf-8")
+                    print(
+                        f"🔑 {len(result.credentials)} mot(s) de passe généré(s) → {args.credentials} (à diffuser puis supprimer)"
+                    )
+                else:
+                    print("🔑 Mots de passe générés (non conservés, notez-les) :")
+                    for ident, pwd in result.credentials:
+                        print(f"   {ident:<24} {pwd}")
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -270,6 +329,15 @@ def main() -> None:
     p_off = sub.add_parser("deactivate", help="Désactiver un compte")
     p_off.add_argument("identifier")
     p_off.set_defaults(func=cmd_deactivate)
+
+    p_imp = sub.add_parser("import", help="Créer des comptes en masse depuis un fichier CSV")
+    p_imp.add_argument("file", help="CSV avec en-tête : identifier, level [, password, role, quota]")
+    p_imp.add_argument("--dry-run", action="store_true", help="Vérifier le fichier sans rien écrire")
+    p_imp.add_argument("--level", choices=LEVELS, help="Niveau par défaut si la colonne manque")
+    p_imp.add_argument("--quota", type=int, default=50, help="Quota par défaut (0 = illimité)")
+    p_imp.add_argument("--update-existing", action="store_true", help="Mettre à jour les comptes existants")
+    p_imp.add_argument("--credentials", metavar="FICHIER", help="Écrire les mots de passe générés dans ce CSV")
+    p_imp.set_defaults(func=cmd_import)
 
     args = parser.parse_args()
     args.func(args)

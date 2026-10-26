@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head with context %}
+{% set active = 'users' %}
+{% block title %}Nouveau compte{% endblock %}
+{% block content %}
+{{ page_head("Nouveau compte", "Un étudiant, un enseignant (supervisor, lecture seule) ou un administrateur.") }}
+<section class="card form-card">
+  {% for e in errors or [] %}<p class="error">{{ icon("circle-alert") }}<span>{{ e }}</span></p>{% endfor %}
+  <form method="post" action="{{ prefix }}/users/new" autocomplete="off">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <div class="grid-2">
+      <div>
+        <label for="identifier">Identifiant</label>
+        <input id="identifier" type="text" name="identifier" value="{{ form.identifier or '' }}" required autofocus autocapitalize="off" spellcheck="false" placeholder="prenom.nom">
+        <p class="hint">Partie de l'adresse universitaire avant le @ (minuscules, chiffres, point, tiret).</p>
+      </div>
+      <div>
+        <label for="role">Rôle</label>
+        <select id="role" name="role">{% for r in roles %}<option value="{{ r }}" {% if form.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+      </div>
+      <div>
+        <label for="level">Niveau</label>
+        <select id="level" name="level">{% for l in levels %}<option value="{{ l }}" {% if form.level == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+        <p class="hint">ALL : voit tous les cours (enseignants).</p>
+      </div>
+      <div>
+        <label for="quota">Quota journalier</label>
+        <input id="quota" type="number" name="quota" min="0" max="10000" value="{{ form.quota }}">
+        <p class="hint">Messages par jour ; 0 = illimité (toujours illimité pour un administrateur).</p>
+      </div>
+    </div>
+    <fieldset class="fieldset">
+      <legend>Mot de passe initial</legend>
+      <label for="password">Saisir un mot de passe</label>
+      <input id="password" type="text" name="password" autocomplete="off" spellcheck="false">
+      <p class="hint">{{ policy }}.</p>
+      <label class="check"><input type="checkbox" name="generate" value="1"> Générer un mot de passe aléatoire (affiché une seule fois après la création)</label>
+    </fieldset>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{{ prefix }}/users">Annuler</a>
+      <button type="submit" class="btn btn-primary">{{ icon("plus") }}<span>Créer le compte</span></button>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head with context %}
+{% set active = 'users' %}
+{% block title %}Importer des comptes{% endblock %}
+{% block content %}
+{{ page_head("Importer des comptes", "Création en masse depuis un fichier CSV (export du secrétariat, tableur).") }}
+<div class="grid-2 align-start">
+  <section class="card form-card">
+    {% for e in errors or [] %}<p class="error">{{ icon("circle-alert") }}<span>{{ e }}</span></p>{% endfor %}
+    <form method="post" action="{{ prefix }}/users/import" enctype="multipart/form-data">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <label for="file">Fichier CSV</label>
+      <input id="file" type="file" name="file" accept=".csv,text/csv,text/plain" required>
+      <div class="grid-2">
+        <div>
+          <label for="level">Niveau par défaut</label>
+          <select id="level" name="level"><option value="">— colonne obligatoire —</option>{% for l in levels %}<option value="{{ l }}" {% if form.level == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+          <p class="hint">Utilisé pour les lignes sans niveau.</p>
+        </div>
+        <div>
+          <label for="quota">Quota par défaut</label>
+          <input id="quota" type="number" name="quota" min="0" max="10000" value="{{ form.quota }}">
+          <p class="hint">Messages par jour ; 0 = illimité.</p>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" name="update_existing" value="1" {% if form.update_existing %}checked{% endif %}> Mettre à jour les comptes existants (rôle, niveau, quota ; mot de passe seulement s'il est fourni)</label>
+      <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ prefix }}/users">Annuler</a>
+        <button type="submit" class="btn btn-primary">{{ icon("search") }}<span>Vérifier le fichier</span></button>
+      </div>
+    </form>
+  </section>
+  <section class="card">
+    <h2>{{ icon("file-text") }}Format attendu</h2>
+    <p>Une ligne d'en-tête puis un compte par ligne ; séparateur <code>;</code> ou <code>,</code> ; UTF-8 (un export Excel « CSV UTF-8 » convient).</p>
+    <pre class="sample">identifier;level;password
+jean.dupont;M1;
+marie.martin@etu.univ-orleans.fr;M2;
+p.durand;M1;Mdp-initial-7!</pre>
+    <ul class="list">
+      <li><code>identifier</code> (obligatoire) : partie de l'adresse universitaire avant le <code>@</code> ; une adresse complète est tronquée automatiquement.</li>
+      <li><code>level</code> : <code>M1</code> ou <code>M2</code> (ou le niveau par défaut ci-contre).</li>
+      <li><code>password</code> (facultatif) : {{ policy }} ; vide = mot de passe généré, remis une seule fois à la fin.</li>
+      <li><code>role</code> (facultatif, <code>student</code> par défaut) et <code>quota</code> (facultatif).</li>
+    </ul>
+    <p class="muted">Rien n'est écrit avant la confirmation : l'étape suivante montre ligne par ligne ce qui sera fait.</p>
+  </section>
+</div>
+{% endblock %}

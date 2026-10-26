@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head with context %}
+{% set active = 'users' %}
+{% block title %}Import terminé{% endblock %}
+{% block content %}
+{{ page_head("Import terminé") }}
+
+<div class="kpis kpis-4">
+  <div class="kpi"><span class="kpi-value">{{ result.created | length }}</span><span class="kpi-label">Comptes créés</span></div>
+  <div class="kpi"><span class="kpi-value">{{ result.updated | length }}</span><span class="kpi-label">Mis à jour</span></div>
+  <div class="kpi"><span class="kpi-value {% if result.failed %}text-warn{% endif %}">{{ result.failed | length }}</span><span class="kpi-label">Échecs</span></div>
+  <div class="kpi"><span class="kpi-value">{{ result.credentials | length }}</span><span class="kpi-label">Mots de passe générés</span></div>
+</div>
+
+{% for ident, why in result.failed %}<p class="error">{{ icon("circle-alert") }}<span>{{ ident }} : {{ why }}</span></p>{% endfor %}
+
+{% if result.credentials %}
+<section class="card secret-card">
+  <h2>{{ icon("key-round") }}Identifiants générés — affichés une seule fois</h2>
+  <p>Ils ne sont pas conservés : téléchargez le fichier ou copiez la liste maintenant, puis transmettez chaque mot de passe à son destinataire.</p>
+  <p><a class="btn btn-primary" href="{{ prefix }}/users/import/{{ credentials_token }}/credentials.csv">{{ icon("download") }}<span>Télécharger le CSV (lien à usage unique)</span></a></p>
+  <table class="table">
+    <thead><tr><th>Identifiant</th><th>Mot de passe initial</th></tr></thead>
+    <tbody>{% for ident, pwd in result.credentials %}<tr><td>{{ ident }}</td><td><code class="secret-value">{{ pwd }}</code></td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+
+<div class="form-actions">
+  <a class="btn btn-ghost" href="{{ prefix }}/users/import">{{ icon("upload") }}<span>Nouvel import</span></a>
+  <a class="btn btn-primary" href="{{ prefix }}/users">{{ icon("users") }}<span>Voir les comptes</span></a>
+</div>
+{% endblock %}

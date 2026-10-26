@@ -20,6 +20,15 @@ LOGIN_OK = "login.ok"
 LOGIN_FAILED = "login.failed"
 LOGIN_LOCKED = "login.locked"
 LOGOUT = "logout"
+# Lot 5.2 — accounts
+USER_CREATE = "user.create"
+USER_UPDATE = "user.update"
+USER_PASSWORD_RESET = "user.password_reset"
+USER_ACTIVATE = "user.activate"
+USER_DEACTIVATE = "user.deactivate"
+USER_PURGE = "user.purge"
+USERS_IMPORT = "users.import"
+ACCOUNT_PASSWORD = "account.password"
 
 
 async def record(

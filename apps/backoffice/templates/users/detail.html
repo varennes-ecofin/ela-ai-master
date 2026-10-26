@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge, page_head with context %}
+{% set active = 'users' %}
+{% block title %}{{ account.identifier }}{% endblock %}
+{% block content %}
+{% call page_head(account.identifier, None) %}
+  <a class="btn btn-ghost" href="{{ prefix }}/users">{{ icon("chevron-right", "flip") }}<span>Tous les comptes</span></a>
+{% endcall %}
+
+{% if flash %}<p class="notice">{{ icon("circle-check") }}<span>{{ flash }}</span></p>{% endif %}
+{% for e in errors or [] %}<p class="error">{{ icon("circle-alert") }}<span>{{ e }}</span></p>{% endfor %}
+{% if secret %}
+<div class="secret">
+  {{ icon("key-round") }}
+  <div>
+    <strong>Mot de passe généré — affiché une seule fois.</strong>
+    <code class="secret-value">{{ secret }}</code>
+    <span class="muted">Transmettez-le à la personne ; il n'est pas conservé.</span>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid-2 align-start">
+  <section class="card">
+    <h2>{{ icon("user-round") }}Profil</h2>
+    <dl class="dl">
+      <dt>Rôle</dt><dd>{{ badge(account.role) }}</dd>
+      <dt>Niveau</dt><dd>{{ account.level }}</dd>
+      <dt>État</dt><dd>{% if account.is_active %}<span class="pill pill-ok">actif</span>{% else %}<span class="pill pill-off">inactif</span>{% endif %}</dd>
+      {% if session.is_admin %}
+      <dt>Quota</dt><dd>{% if account.unlimited %}illimité{% else %}{{ account.daily_quota }} messages / jour{% endif %}</dd>
+      <dt>Aujourd'hui</dt><dd>{{ account.messages_today }} message(s)</dd>
+      <dt>Mot de passe</dt><dd>{% if account.has_password %}défini{% else %}<span class="pill pill-warn">absent — connexion impossible</span>{% endif %}</dd>
+      {% endif %}
+      <dt>Dernière connexion</dt><dd class="mono">{{ account.last_login | dt if account.last_login else '—' }}</dd>
+      <dt>Créé le</dt><dd class="mono">{{ (account.created_at or '')[:16] | replace('T', ' ') or '—' }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>{{ icon("activity") }}Activité</h2>
+    <dl class="dl">
+      <dt>Conversations</dt><dd>{{ activity.threads }}</dd>
+      <dt>Questions posées</dt><dd>{{ activity.questions }}</dd>
+      <dt>Réponses de quiz</dt><dd>{{ activity.quiz_answers }}</dd>
+      <dt>Tentatives d'exercice</dt><dd>{{ activity.exercise_attempts }}</dd>
+      <dt>Exécutions de code</dt><dd>{{ activity.code_runs }}</dd>
+    </dl>
+  </section>
+</div>
+
+{% if session.is_admin %}
+<section class="card">
+  <h2>{{ icon("pencil") }}Modifier</h2>
+  <form method="post" action="{{ prefix }}/users/{{ account.identifier }}">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <div class="grid-3">
+      <div>
+        <label for="role">Rôle</label>
+        <select id="role" name="role" {% if is_self %}disabled{% endif %}>{% for r in roles %}<option value="{{ r }}" {% if form.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+        {% if is_self %}<input type="hidden" name="role" value="{{ account.role }}"><p class="hint">Vous ne pouvez pas changer votre propre rôle.</p>{% elif last_admin %}<p class="hint">Dernier administrateur actif : le rôle ne peut pas être abaissé.</p>{% endif %}
+      </div>
+      <div>
+        <label for="level">Niveau</label>
+        <select id="level" name="level">{% for l in levels %}<option value="{{ l }}" {% if form.level == l %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+      </div>
+      <div>
+        <label for="quota">Quota journalier</label>
+        <input id="quota" type="number" name="quota" min="0" max="10000" value="{{ form.quota }}">
+        <p class="hint">0 = illimité.</p>
+      </div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Enregistrer</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>{{ icon("key-round") }}Mot de passe</h2>
+  <form method="post" action="{{ prefix }}/users/{{ account.identifier }}/password" autocomplete="off">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <div class="grid-2">
+      <div>
+        <label for="password">Nouveau mot de passe</label>
+        <input id="password" type="text" name="password" autocomplete="off" spellcheck="false">
+        <p class="hint">{{ policy }}.</p>
+      </div>
+      <div>
+        <label class="check" style="margin-top: 34px"><input type="checkbox" name="generate" value="1"> Générer un mot de passe aléatoire (affiché une seule fois)</label>
+      </div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Remplacer le mot de passe</button></div>
+  </form>
+</section>
+
+<section class="card danger">
+  <h2>{{ icon("triangle-alert") }}Désactivation et suppression</h2>
+  <div class="danger-row">
+    <div>
+      <strong>{% if account.is_active %}Désactiver le compte{% else %}Réactiver le compte{% endif %}</strong>
+      <p class="muted">{% if account.is_active %}La connexion est refusée ; l'historique est conservé.{% else %}Le compte pourra se reconnecter.{% endif %}</p>
+    </div>
+    <form method="post" action="{{ prefix }}/users/{{ account.identifier }}/active">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <input type="hidden" name="active" value="{{ '0' if account.is_active else '1' }}">
+      <button type="submit" class="btn {% if account.is_active %}btn-danger{% else %}btn-primary{% endif %}" {% if account.is_active and (is_self or last_admin) %}disabled title="Impossible pour votre propre compte ou le dernier administrateur"{% endif %}>
+        {% if account.is_active %}Désactiver{% else %}Réactiver{% endif %}
+      </button>
+    </form>
+  </div>
+  <div class="danger-row">
+    <div>
+      <strong>Supprimer le compte</strong>
+      <p class="muted">{% if has_activity %}Impossible : ce compte a une activité (désactivez-le).{% else %}Réservé à un compte créé par erreur, sans aucune activité. Irréversible.{% endif %}</p>
+    </div>
+    <form method="post" action="{{ prefix }}/users/{{ account.identifier }}/purge" onsubmit="return confirm('Supprimer définitivement le compte {{ account.identifier }} ?');">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-danger" {% if has_activity or is_self %}disabled{% endif %}>{{ icon("trash-2") }}<span>Supprimer</span></button>
+    </form>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

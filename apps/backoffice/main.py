@@ -30,10 +30,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backoffice.deps import CsrfError, ForbiddenError, LoginRequiredError
+from backoffice.oneshot import OneShotStore
 from backoffice.rendering import BRAND_DIR, STATIC_DIR, render
+from backoffice.routes import account as account_routes
 from backoffice.routes import auth as auth_routes
 from backoffice.routes import health as health_routes
 from backoffice.routes import home as home_routes
+from backoffice.routes import users as users_routes
 from backoffice.security import LoginLimiter, SessionSigner
 from ela.auth import build_auth_provider
 from ela.config import Settings, get_settings
@@ -101,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.signer = SessionSigner(s.backoffice_secret_key.get_secret_value(), s.backoffice_session_hours * 3600)
     app.state.limiter = LoginLimiter(s.backoffice_login_max_failures, s.backoffice_login_lock_minutes * 60)
     app.state.auth_provider = build_auth_provider(s)
+    app.state.oneshot = OneShotStore(ttl_seconds=15 * 60)
 
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -108,6 +112,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     root.include_router(health_routes.router)
     root.include_router(auth_routes.router)
     root.include_router(home_routes.router)
+    root.include_router(users_routes.router)
+    root.include_router(account_routes.router)
     app.include_router(root)
     app.mount(f"{prefix}/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     if BRAND_DIR.is_dir():

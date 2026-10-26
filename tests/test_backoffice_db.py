@@ -6,6 +6,7 @@ the dashboard queries and a real login (bcrypt) through the HTTP layer.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import uuid
@@ -134,3 +135,115 @@ async def test_real_login_flow(db):
     # last_login was recorded by the local provider
     row = await db.fetch_one("SELECT last_login FROM users WHERE identifier = :i", {"i": admin})
     assert row["last_login"] is not None
+
+
+# --- lot 5.2 : account administration against the real database --------------------------
+
+
+async def test_account_administration(db):
+    from ela.auth import passwords
+    from ela.db import users
+
+    ident = f"pytest_{uuid.uuid4().hex[:8]}"
+    # create, read back, list with filters
+    a = await users.create_account(
+        ident, password_hash=passwords.hash_password("Secret-123"), level="M2", daily_quota=10
+    )
+    assert a.identifier == ident and a.level == "M2" and a.daily_quota == 10 and a.has_password and a.is_active
+    assert (await users.get_account(ident)).messages_today == 0
+    found = [x.identifier for x in await users.list_accounts(search=ident[:10], level="M2", active=True)]
+    assert found == [ident]
+    assert await users.list_accounts(search=ident, role="admin") == []
+    with pytest.raises(users.AccountExistsError):
+        await users.create_account(ident, password_hash=None)
+
+    # update, password, deactivate
+    a = await users.update_account(ident, role="supervisor", level="ALL", daily_quota=None)
+    assert a.role == "supervisor" and a.level == "ALL" and a.unlimited
+    await users.set_password_hash(ident, passwords.hash_password("Autre-mdp-9"))
+    assert passwords.check_password("Autre-mdp-9", await users.get_password_hash(ident))
+    assert (await users.authenticate(ident, "Autre-mdp-9")) is not None
+    await users.update_account(ident, is_active=False)
+    assert not (await users.get_account(ident)).is_active
+    with pytest.raises(users.AccountNotFoundError):
+        await users.update_account("pytest_nobody", level="M1")
+
+    # activity → purge refused; messages_today counts today's user messages
+    tid = uuid.uuid4()
+    await db.execute(
+        'INSERT INTO threads (id, name, "createdAt", "userIdentifier") VALUES (:t, :n, NOW()::TEXT, :i)',
+        {"t": tid, "n": "x", "i": ident},
+    )
+    await db.execute(
+        'INSERT INTO steps (id, name, type, "threadId", "createdAt") '
+        "VALUES (gen_random_uuid(), 'm', 'user_message', :t, NOW()::TEXT)",
+        {"t": tid},
+    )
+    assert (await users.get_account(ident)).messages_today == 1
+    summary = await users.activity_summary(ident)
+    assert summary["threads"] == 1 and summary["questions"] == 0
+    with pytest.raises(users.AccountHasActivityError):
+        await users.purge_account(ident)
+
+    # a fresh account can be purged
+    other = f"pytest_{uuid.uuid4().hex[:8]}"
+    await users.create_account(other, password_hash=None)
+    await users.purge_account(other)
+    assert await users.get_account(other) is None
+    with pytest.raises(users.AccountNotFoundError):
+        await users.purge_account(other)
+    assert await users.count_admins() >= 0
+
+
+async def test_csv_import_end_to_end(db):
+    from ela.accounts import importer
+    from ela.auth import passwords
+    from ela.db import users
+
+    tag = uuid.uuid4().hex[:6]
+    a, b = f"pytest_{tag}.un", f"pytest_{tag}.deux"
+    text = f"identifier;level;password\n{a}@etu.univ-orleans.fr;M1;\n{b};M2;Bon-mdp-1!\n"
+    plan = await importer.plan_import(text, default_quota=30)
+    assert (plan.n_create, plan.n_error) == (2, 0)
+    result = await importer.apply_import(plan)
+    assert result.created == [a, b] and result.failed == []
+    assert [i for i, _ in result.credentials] == [a]
+    assert (await users.authenticate(a, result.credentials[0][1])) is not None
+    assert (await users.authenticate(b, "Bon-mdp-1!")).level == "M2"
+    assert (await users.get_account(a)).daily_quota == 30
+
+    # second run: skipped, then updated with update_existing
+    plan = await importer.plan_import(text)
+    assert plan.n_skip == 2 and not plan.applicable
+    plan = await importer.plan_import(f"identifier;level;quota\n{a};M2;0\n", update_existing=True)
+    result = await importer.apply_import(plan)
+    assert result.updated == [a] and result.credentials == []
+    acc = await users.get_account(a)
+    assert acc.level == "M2" and acc.unlimited and passwords.check_password  # password unchanged
+
+
+async def test_cli_import(db, tmp_path, capsys):
+    """``ela-users import`` (dry run, then real run writing the credentials file)."""
+    import argparse
+
+    from ela.cli import users as cli
+    from ela.db import users
+
+    tag = uuid.uuid4().hex[:6]
+    ident = f"pytest_{tag}.cli"
+    csv_file = tmp_path / "etudiants.csv"
+    csv_file.write_text(f"identifier;level\n{ident};M1\nbad id;M1\n", encoding="utf-8")
+    creds = tmp_path / "mdp.csv"
+    base = dict(file=str(csv_file), level=None, quota=50, update_existing=False, credentials=str(creds))
+
+    await db.dispose()  # the CLI runs its own event loop (in a thread here) and disposes the engine itself
+    await asyncio.to_thread(cli.cmd_import, argparse.Namespace(dry_run=True, **base))
+    out = capsys.readouterr().out
+    assert "1 à créer" in out and "1 en erreur" in out and await users.get_account(ident) is None
+
+    await db.dispose()
+    await asyncio.to_thread(cli.cmd_import, argparse.Namespace(dry_run=False, **base))
+    out = capsys.readouterr().out
+    assert "1 compte(s) créé(s)" in out and creds.exists()
+    password = creds.read_text(encoding="utf-8").splitlines()[1].split(";")[1]
+    assert (await users.authenticate(ident, password)) is not None
