@@ -1,0 +1,14 @@
+{% from "_macros.html" import icon, empty with context %}
+{% if ctx %}
+<div class="context">
+  <p class="muted context-title">{{ icon("message-square") }}Échange autour de cette réponse · <a href="{{ prefix }}/conversations/{{ ctx.feedback.thread_id }}">lire toute la conversation</a></p>
+  {% for s in ctx.steps %}
+    <div class="bubble {% if s.type == 'user_message' %}bubble-user{% else %}bubble-assistant{% endif %} {% if s.rated %}bubble-rated{% endif %}">
+      <div class="bubble-meta">{{ icon("user-round" if s.type == 'user_message' else "bot") }}<span>{{ "Étudiant" if s.type == 'user_message' else "ELA" }}</span><span class="mono muted">{{ s.created_at }}</span>{% if s.rated %}<span class="pill {% if ctx.feedback.score == 1 %}pill-ok{% else %}pill-warn{% endif %}">réponse notée</span>{% endif %}</div>
+      <pre class="msg">{{ s.content[:800] }}{% if s.content | length > 800 %}…{% endif %}</pre>
+    </div>
+  {% endfor %}
+</div>
+{% else %}
+{{ empty("Contexte non disponible.", "circle-alert") }}
+{% endif %}

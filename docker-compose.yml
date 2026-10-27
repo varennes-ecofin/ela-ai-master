@@ -4,7 +4,7 @@
 # Deux modes de déploiement :
 #  - serveur avec un reverse proxy DÉJÀ en place (cas du VPS, où un Caddy
 #    sert déjà une autre application) : `docker compose up -d`
-#    → app, admin et backoffice écoutent uniquement sur 127.0.0.1 (8000 / 8501 / 8502) ;
+#    → app et backoffice écoutent uniquement sur 127.0.0.1 (8000 / 8502) ;
 #      ajouter l'extrait deploy/caddy-ela.snippet au Caddyfile existant.
 #  - serveur dédié sans reverse proxy : `docker compose --profile standalone up -d`
 #    → le service `caddy` ci-dessous prend les ports 80/443 (HTTPS automatique).
@@ -21,15 +21,12 @@ services:
       - "443:443/udp"
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
-      - ADMIN_BASIC_AUTH_USER=${ADMIN_BASIC_AUTH_USER:-admin}
-      - ADMIN_BASIC_AUTH_HASH=${ADMIN_BASIC_AUTH_HASH}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
       - app
-      - admin
       - backoffice
 
   # --- Base de données (PostgreSQL 15 + extension pgvector, prête pour la phase 2) ---
@@ -97,30 +94,8 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # --- Backoffice Admin (Streamlit) — accessible uniquement via Caddy (/admin) ---
-  admin:
-    build:
-      context: .
-      dockerfile: apps/admin/Dockerfile
-    container_name: ela-admin
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:${ELA_ADMIN_PORT:-8501}:8501"
-    env_file:
-      - .env
-    environment:
-      # Force les deux URL vers le service db (une valeur « localhost » du .env serait prioritaire sinon)
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      - ADMIN_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.baseUrlPath", "admin"]
-    volumes:
-      - ./data:/app/data
-
-  # --- Nouveau backoffice (FastAPI + HTMX, phase 5) — servi par Caddy sous /backoffice ---
-  # Remplace progressivement Streamlit (/admin) ; sessions signées (BACKOFFICE_SECRET_KEY dans le .env).
+  # --- Backoffice (FastAPI + HTMX, phase 5) — servi par Caddy sous /backoffice ---
+  # Sessions signées (BACKOFFICE_SECRET_KEY dans le .env) ; exécute aussi les jobs d'ingestion.
   backoffice:
     build:
       context: .

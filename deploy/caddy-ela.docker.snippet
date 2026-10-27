@@ -1,10 +1,9 @@
 # ============================================================
 # ELA AI — bloc à ajouter au Caddyfile d'un Caddy qui tourne DANS Docker,
-# sur le même réseau « proxy » que les services app / admin
+# sur le même réseau « proxy » que les services app / backoffice
 # (voir deploy/docker-compose.override.vps.yml).
 #
 # Variables attendues dans le .env de Caddy : DOMAINE_ELA (ex. ela.mondomaine.fr).
-# Hash bcrypt du backoffice Streamlit (/admin) : `docker compose exec app ela-hash --caddy`.
 # Caddy doit publier les ports 80 ET 443 (port 80 : défi HTTP Let's Encrypt
 # et redirection http → https).
 # ============================================================
@@ -20,15 +19,7 @@
         -Server
     }
 
-    @admin path /admin /admin/*
-    handle @admin {
-        basic_auth {
-            admin $2b$12$REMPLACER_PAR_LE_HASH
-        }
-        reverse_proxy admin:8501
-    }
-
-    # Nouveau backoffice (FastAPI, phase 5) : authentification par session dans l'application
+    # Backoffice (FastAPI) : authentification par session dans l'application
     @backoffice path /backoffice /backoffice/*
     handle @backoffice {
         reverse_proxy backoffice:8080

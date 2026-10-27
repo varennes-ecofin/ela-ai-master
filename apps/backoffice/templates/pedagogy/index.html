@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% from "_filters.html" import subnav, period_fields, period_presets, period_notice, csv_link with context %}
+{% set active = 'activity' %}
+{% set extra = "tab=" ~ tab ~ (("&course=" ~ (course | urlencode)) if course else "") %}
+{% set csv_query = period.query ~ (("&course=" ~ (course | urlencode)) if course else "") %}
+{% block title %}Pédagogie{% endblock %}
+{% block content %}
+{{ page_head("Pédagogie", "Ce que les étudiants travaillent, où ils échouent, ce qui manque au cours.", "graduation-cap") }}
+{{ subnav("pedagogy") }}
+
+{{ period_notice(period) }}
+<form class="filters period-form" method="get" action="{{ prefix }}/pedagogy">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  {{ period_fields(period) }}
+  <button type="submit" class="btn btn-primary filter-btn">{{ icon("search") }}<span>Appliquer</span></button>
+  {{ period_presets(period, extra) }}
+</form>
+
+<nav class="tabs" aria-label="Onglets">
+  {% for key, label in tabs %}<a class="tab {% if key == tab %}active{% endif %}" href="?tab={{ key }}&{{ period.query }}">{{ label }}</a>{% endfor %}
+</nav>
+
+{% if tab == 'quiz' %}{% include "pedagogy/_quiz.html" %}
+{% elif tab == 'exercises' %}{% include "pedagogy/_exercises.html" %}
+{% elif tab == 'questions' %}{% include "pedagogy/_questions.html" %}
+{% elif tab == 'corpus' %}{% include "pedagogy/_corpus.html" %}
+{% else %}{% include "pedagogy/_code.html" %}{% endif %}
+{% endblock %}

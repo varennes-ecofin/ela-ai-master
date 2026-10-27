@@ -3,6 +3,34 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [2.0.0a16] — 2026-10-27 — Phase 5, lot 5.4b : retrait du backoffice Streamlit
+
+### Supprimé
+- `apps/admin/` (application Streamlit, vues, Dockerfile, configuration) : le backoffice FastAPI est à parité depuis le lot 5.4a.
+- Extra `admin` de `pyproject.toml` (`streamlit`, `pandas`, `plotly`) et ses exceptions ruff ; installation : `pip install -e ".[backoffice,dev]"`.
+- Service `admin` de `docker-compose.yml` (port 8501), variables `ADMIN_BASIC_AUTH_USER` / `ADMIN_BASIC_AUTH_HASH` et blocs `/admin` avec `basic_auth` du `Caddyfile`, de `deploy/caddy-ela.snippet`, de `deploy/caddy-ela.docker.snippet` et de `deploy/docker-compose.override.vps.yml` ; `ela-hash --caddy` (le backoffice authentifie lui-même ses utilisateurs).
+
+### Modifié
+- CI : installation `.[dev,backoffice]` ; README, `.env.example` et `docs/DEPLOIEMENT_VPS.md` (§ 9 : procédure de retrait sur le VPS, `docker compose up -d --remove-orphans`, bloc Caddy, nettoyage des images). `ADMIN_DATABASE_URL` reste une option des outils en ligne de commande.
+
+## [2.0.0a15] — 2026-10-27 — Phase 5, lot 5.4a : activité, pédagogie, feedbacks, conversations
+
+### Ajouté
+- **Backoffice → Activité** (onglet « Activité » de la navigation, sous-navigation Activité / Pédagogie / Feedbacks / Conversations, lecture seule pour `admin` et `supervisor`) : indicateurs (comptes actifs, conversations, messages du jour et de la veille, messages de la période), **messages par jour**, **conversations par type** (anneau + aires empilées par jour), **classement des utilisateurs** (barres + tableau, liens vers la fiche et les conversations), **consommation des quotas du jour** (barres de progression, « quota atteint »). Filtre utilisateur sur les graphiques quotidiens.
+- **Filtre de période** commun aux quatre pages : 30 derniers jours par défaut (J−30 → J), raccourcis 7 / 30 / 90 jours, dates libres, portées dans l'URL (`?from=&to=`) ; paramètres invalides (début après fin, plus de trois ans) signalés et remplacés par la période par défaut. Les jours sont ceux des horodatages en base (UTC), comme pour les quotas et l'accueil.
+- **Types de conversation** déduits du nom du fil (`ela.db.threads.classify_thread` / `THREAD_KIND_SQL`) : chat, quiz (`🎓`), exercice (`✏️`), fiche (`📄`), code (`💻`).
+- **Pédagogie** : cinq onglets — Quiz (indicateurs, réussite par sujet, questions les plus ratées), Exercices (par sujet), Questions (par cours et chapitre, dernières questions avec filtre cours et lien vers le fil), Hors corpus (refusées, connaissances générales, sans extrait cité), Code (par statut et origine, erreurs fréquentes, par étudiant).
+- **Feedbacks** : statistiques globales (total, positifs, négatifs, taux), liste filtrée (période, utilisateur, score) paginée par 50 avec la réponse notée, le commentaire et, à la demande (fragment HTMX), l'échange autour de la réponse (3 messages avant, 1 après).
+- **Conversations** : liste filtrée (période, utilisateur, type) paginée par 50 avec nombre de messages et de feedbacks ; **lecteur** d'un fil en bulles (texte brut, retours à la ligne conservés, LaTeX tel quel), feedback attaché aux réponses, erreurs signalées, **étapes d'outils** de l'agent (recherches, exécutions) affichables (`?tools=1`).
+- **Export CSV** de chaque tableau avec les filtres de la page (`;`, UTF-8 avec BOM, dates ISO, booléens oui/non) : activité par jour / par utilisateur / quotas, les neuf tableaux de la pédagogie, feedbacks, conversations (métadonnées, pas les messages).
+- **Graphiques SVG générés côté serveur** (`apps/backoffice/charts.py` : courbe, aires empilées, anneau, barres horizontales ; couleurs par classes CSS, thème clair/sombre, infobulles natives), sans bibliothèque JavaScript.
+- Liens croisés : les dernières conversations de l'accueil ouvrent le lecteur ; la fiche d'un compte mène à ses conversations, son activité et ses feedbacks.
+- `ela.db.stats`, `ela.db.pedagogy`, `ela.db.feedbacks`, `ela.db.conversations` (requêtes async réutilisables, jamais d'exception vers la vue) ; `apps/backoffice/periods.py`, `paging.py`, `csvexport.py` ; neuf icônes Lucide ajoutées au sprite.
+- Tests : pages, filtres, pagination, contexte, CSV, périodes, graphiques et classification hors ligne (15, `tests/test_backoffice_activity.py`) ; requêtes des quatre modules et pages réelles sur PostgreSQL (3).
+
+### Modifié
+- `ela.db.threads` porte la classification des conversations partagée par les statistiques et le lecteur.
+
 ## [2.0.0a14] — 2026-10-26 — Phase 5, lot 5.3 : cours et ingestion
 
 ### Ajouté

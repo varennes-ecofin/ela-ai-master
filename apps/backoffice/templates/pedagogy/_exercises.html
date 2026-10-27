@@ -1,0 +1,22 @@
+{% from "_macros.html" import icon, empty with context %}
+{% from "_filters.html" import csv_link with context %}
+{% if exercises %}
+<div class="kpis kpis-4">
+  <div class="kpi"><span class="kpi-value">{{ totals.exercises }}</span><span class="kpi-label">Exercices commencés</span></div>
+  <div class="kpi"><span class="kpi-value">{{ totals.completed }}<small>{% if totals.exercises %}{{ (100 * totals.completed / totals.exercises) | round | int }} %{% endif %}</small></span><span class="kpi-label">Terminés</span></div>
+  <div class="kpi"><span class="kpi-value">{{ totals.attempts }}</span><span class="kpi-label">Étapes soumises</span></div>
+</div>
+<section class="card">
+  <div class="card-head"><h2>{{ icon("pencil") }}Par sujet</h2>{{ csv_link(prefix ~ "/pedagogy/exercices.csv?" ~ period.query) }}</div>
+  <table class="table">
+    <thead><tr><th>Sujet</th><th class="num">Exercices</th><th class="num">Terminés</th><th class="num">Étapes soumises</th><th class="num">Étapes correctes</th><th class="num">Étudiants</th></tr></thead>
+    <tbody>
+    {% for r in exercises %}
+      <tr><td>{{ r.topic }}</td><td class="num">{{ r.exercises }}</td><td class="num">{{ r.completed }}</td><td class="num">{{ r.attempts }}</td><td class="num">{{ r.correct_steps_pct }} %</td><td class="num">{{ r.students }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<section class="card">{{ empty("Aucun exercice sur la période.", "pencil") }}</section>
+{% endif %}

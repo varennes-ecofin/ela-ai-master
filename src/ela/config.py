@@ -35,7 +35,7 @@ def find_env_file(start: Path | None = None, max_depth: int = 4) -> Path | None:
     Uses ``ELA_ENV_FILE`` when set, otherwise the first ``.env`` found walking
     up from the current directory.
 
-    Lets the admin app (run from ``apps/admin``) and CLI tools share the
+    Lets the backoffice (run from ``apps/backoffice``) and CLI tools share the
     project-root ``.env`` without copying it around.
 
     Args:

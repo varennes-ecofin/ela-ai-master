@@ -33,10 +33,14 @@ from backoffice.deps import CsrfError, ForbiddenError, LoginRequiredError
 from backoffice.oneshot import OneShotStore
 from backoffice.rendering import BRAND_DIR, STATIC_DIR, render
 from backoffice.routes import account as account_routes
+from backoffice.routes import activity as activity_routes
 from backoffice.routes import auth as auth_routes
+from backoffice.routes import conversations as conversations_routes
 from backoffice.routes import courses as courses_routes
+from backoffice.routes import feedbacks as feedbacks_routes
 from backoffice.routes import health as health_routes
 from backoffice.routes import home as home_routes
+from backoffice.routes import pedagogy as pedagogy_routes
 from backoffice.routes import users as users_routes
 from backoffice.security import LoginLimiter, SessionSigner
 from ela.auth import build_auth_provider
@@ -121,6 +125,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     root.include_router(users_routes.router)
     root.include_router(account_routes.router)
     root.include_router(courses_routes.router)
+    root.include_router(activity_routes.router)
+    root.include_router(pedagogy_routes.router)
+    root.include_router(feedbacks_routes.router)
+    root.include_router(conversations_routes.router)
     app.include_router(root)
     app.mount(f"{prefix}/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     if BRAND_DIR.is_dir():

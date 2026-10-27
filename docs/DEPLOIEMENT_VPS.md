@@ -1,9 +1,9 @@
 # ELA AI — Déploiement et mise à jour sur le VPS
 
 Procédure pour un VPS où **Caddy est déjà en place** pour une autre application.
-ELA tourne dans Docker (`docker-compose.yml`) ; `app` (Chainlit), `admin`
-(Streamlit) et `backoffice` (FastAPI, phase 5) n'écoutent que sur `127.0.0.1`
-(ports 8000, 8501 et 8502) et le Caddy existant les expose en HTTPS. Le service
+ELA tourne dans Docker (`docker-compose.yml`) ; `app` (Chainlit) et `backoffice`
+(FastAPI) n'écoutent que sur `127.0.0.1` (ports 8000 et 8502) et le Caddy
+existant les expose en HTTPS. Le service `admin` (Streamlit) a disparu au lot 5.4b (§ 9). Le service
 `sandbox` n'est joignable que par `app`.
 
 ## 1. Première installation
@@ -17,15 +17,14 @@ cp .env.example .env && nano .env        # voir § 3
 mkdir -p data/latex                        # déposer ici les cours (scp -r ... :/opt/ela-ai/data/latex/)
 docker compose build
 docker compose up -d db
-docker compose up -d app admin backoffice sandbox
+docker compose up -d app backoffice sandbox
 docker compose exec app ela-db upgrade                                   # schéma + migrations
 docker compose exec -it app ela-users create admin --role admin --level ALL
 docker compose exec app ela-ingest                                       # base de connaissances
 ```
 
 Le Caddy existant : copier la variante A (sous-domaine) ou B (chemin `/ela`) de
-`deploy/caddy-ela.snippet` dans son Caddyfile, remplacer le hash bcrypt du
-backoffice (`docker compose exec app ela-hash --caddy`), puis recharger :
+`deploy/caddy-ela.snippet` dans son Caddyfile, puis recharger :
 
 ```bash
 sudo caddy reload --config /etc/caddy/Caddyfile      # Caddy installé comme service
@@ -33,10 +32,10 @@ docker exec <conteneur-caddy> caddy reload --config /etc/caddy/Caddyfile   # Cad
 ```
 
 > Caddy dans Docker : un conteneur ne voit pas le `127.0.0.1` de l'hôte. Soit
-> remplacer `127.0.0.1:8000` / `127.0.0.1:8501` par `host.docker.internal:8000`
-> / `host.docker.internal:8501` dans l'extrait (et `extra_hosts:
+> remplacer `127.0.0.1:8000` / `127.0.0.1:8502` par `host.docker.internal:8000`
+> / `host.docker.internal:8502` dans l'extrait (et `extra_hosts:
 > ["host.docker.internal:host-gateway"]` sur le service Caddy), soit mettre
-> `app` et `admin` sur le réseau Docker de Caddy et utiliser `app:8000` / `admin:8501`.
+> `app` et `backoffice` sur le réseau Docker de Caddy et utiliser `app:8000` / `backoffice:8080`.
 
 ## 2. Mise à jour (à chaque version)
 
@@ -79,11 +78,10 @@ Les clés API (`CEREBRAS_API_KEY`, plus tard `ILAAS_*`) ne sont **que** dans le
    `/bilan`.
 2. Atelier Code → Python → « AR(1) » → ▶️ Exécuter : sortie, graphique,
    interprétation. 11ᵉ exécution → message de quota.
-3. `https://<site>/admin` (authentification basique Caddy) : onglet Pédagogie,
-   sous-onglet Code.
-3b. `https://<site>/backoffice/` : connexion avec le compte `admin` (tableau de
+3. `https://<site>/backoffice/` : connexion avec le compte `admin` (tableau de
    bord, journal d'administration), refus d'un compte étudiant, déconnexion ;
-   `https://<site>/backoffice/healthz?deep=1` renvoie `"database": "ok"`.
+   `https://<site>/backoffice/healthz?deep=1` renvoie `"database": "ok"` ;
+   onglet Activité → Pédagogie → Code (exécutions de l'étape 2).
 4. Isolation du bac à sable : dans le chat, demander « exécute `import socket;
    socket.create_connection(("1.1.1.1", 80), timeout=3)` » doit échouer
    (réseau interne sans sortie).
@@ -100,6 +98,9 @@ Les migrations Alembic sont additives (tables nouvelles) : revenir à une
 version antérieure du code ne casse pas la base.
 
 ## 6. Migration depuis l'ancienne version (VPS avec Caddy dans Docker)
+
+> Procédure historique (migration du 19–21/10/2026, version `2.0.0a11`) : elle mentionne encore
+> le service `admin` (Streamlit) et son authentification basique, retirés depuis (§ 9).
 
 Situation de départ : l'ancien ELA (`app.py`, `main_ela.py`) tourne depuis
 `/home/debian/ela-ai-master` avec son propre `docker-compose.yml` (application
@@ -139,7 +140,7 @@ Séquence (chaque étape indique ce qu'elle doit afficher) :
 4. Caddy (`/opt/caddy`) : dans le bloc `{$DOMAINE_ELA}` du `Caddyfile`, ajouter avant le `handle` final
    le bloc `@backoffice` de `deploy/caddy-ela.docker.snippet` (`reverse_proxy backoffice:8080`, sans
    `basic_auth`), puis `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
-5. Vérification § 4, point 3b. Streamlit reste disponible sur `/admin` jusqu'à parité.
+5. Vérification § 4, point 3.
 
 ## 8. Lots 5.2 et 5.3 (comptes, cours, ingestion depuis le backoffice)
 
@@ -154,3 +155,32 @@ Séquence (chaque étape indique ce qu'elle doit afficher) :
    reste utilisable en ligne de commande.
 
 Retour arrière : `docker compose down` dans `/home/debian/ela-ai-master`, `git checkout <ancien commit>` (ou le `.env.ancien` + `docker-compose.yml.backup`), `docker compose up -d`. La base n'est pas modifiée de façon destructive par les migrations (tables ajoutées seulement).
+
+## 9. Lot 5.4 : backoffice à parité, retrait de Streamlit
+
+Le lot 5.4a (`2.0.0a15`) porte les dernières pages de Streamlit (activité, pédagogie,
+feedbacks, conversations) dans le backoffice FastAPI ; le lot 5.4b (`2.0.0a16`) supprime
+`apps/admin/`, le service `admin` du compose, l'extra `admin` du paquet et les blocs
+`/admin` de Caddy (plus d'authentification basique). Sur le VPS, dans l'ordre :
+
+1. `git pull` (les deux lots) puis `docker compose build backoffice` ;
+   `docker compose up -d --remove-orphans` : `ela-backoffice` est reconstruit, le conteneur
+   `ela-admin` (orphelin) est arrêté et supprimé ; `docker compose ps` ne liste plus `admin`.
+   Aucune migration dans ces lots (`ela-db upgrade` reste sans effet).
+2. `docker-compose.override.yml` : `cp deploy/docker-compose.override.vps.yml docker-compose.override.yml`
+   (le fichier ne mentionne plus `admin` ; sinon `docker compose config` avertit d'un service inconnu).
+3. Caddy (`/opt/caddy`) : dans le bloc `{$DOMAINE_ELA}` du `Caddyfile`, supprimer le bloc `@admin`
+   (avec son `basic_auth` et `reverse_proxy admin:8501`), garder `@backoffice` et le `handle` final —
+   le résultat doit être identique à `deploy/caddy-ela.docker.snippet` ; puis
+   `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`. `https://<site>/admin` renvoie
+   désormais sur Chainlit (404 côté application) : c'est attendu.
+4. `.env` du serveur : les lignes `ADMIN_BASIC_AUTH_USER` / `ADMIN_BASIC_AUTH_HASH` peuvent être
+   supprimées (ignorées sinon). `ADMIN_DATABASE_URL` reste forcée par compose pour les outils en
+   ligne de commande.
+5. Nettoyage : `docker image prune -f` (image `ela-ai-master-admin` devenue inutile, ≈ 2 Go avec torch).
+6. Vérification § 4, point 3, plus `https://<site>/backoffice/activity`, `/pedagogy`, `/feedbacks`,
+   `/conversations` avec le compte `admin` puis `supervisor` (lecture seule) ; un export CSV s'ouvre
+   dans Excel avec les accents.
+
+Retour arrière : `git checkout 2.0.0a15` (ou le commit du lot 5.4a) remet `apps/admin/` et le service
+`admin` ; `docker compose up -d --build admin` puis rétablir le bloc `@admin` dans Caddy.

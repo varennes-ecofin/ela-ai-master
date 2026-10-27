@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, badge, page_head, empty with context %}
+{% from "_filters.html" import subnav, period_fields, period_presets, period_notice, csv_link with context %}
+{% set active = 'activity' %}
+{% set extra = ("user=" ~ (user | urlencode)) if user else "" %}
+{% set csv_query = period.query ~ ("&" ~ extra if extra else "") %}
+{% block title %}Activité{% endblock %}
+{% block content %}
+{{ page_head("Activité", "Utilisation d'ELA : messages, conversations par type, classement des utilisateurs et quotas du jour.", "activity") }}
+{{ subnav("activity") }}
+
+{% if overview.error %}<p class="error">{{ icon("circle-alert") }}<span>Base de données inaccessible : {{ overview.error }}</span></p>{% endif %}
+<div class="kpis">
+  <div class="kpi">{{ icon("users", "kpi-icon") }}<span class="kpi-value">{{ overview.users_active }}</span><span class="kpi-label">Comptes actifs</span></div>
+  <div class="kpi">{{ icon("message-square", "kpi-icon") }}<span class="kpi-value">{{ overview.threads }}</span><span class="kpi-label">Conversations au total</span></div>
+  <div class="kpi">{{ icon("send", "kpi-icon") }}<span class="kpi-value">{{ overview.messages_today }}<small>hier : {{ overview.messages_yesterday }}</small></span><span class="kpi-label">Messages aujourd'hui</span></div>
+  <div class="kpi">{{ icon("chart-line", "kpi-icon") }}<span class="kpi-value">{{ daily.total_messages }}<small>{{ total_threads }} conversation(s)</small></span><span class="kpi-label">Messages sur la période{% if user %} · {{ user }}{% endif %}</span></div>
+</div>
+
+{{ period_notice(period) }}
+<form class="filters period-form" method="get" action="{{ prefix }}/activity">
+  {{ period_fields(period) }}
+  <label class="filter"><span class="filter-label">Utilisateur</span>
+    <select name="user"><option value="">Tous</option>{% for u in users %}<option value="{{ u }}" {% if user == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+  <button type="submit" class="btn btn-primary filter-btn">{{ icon("search") }}<span>Appliquer</span></button>
+  {{ period_presets(period, extra) }}
+</form>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("chart-line") }}Messages par jour <span class="muted">· {{ period.label }}</span></h2>{{ csv_link(prefix ~ "/activity/daily.csv?" ~ csv_query) }}</div>
+  {% if chart_messages %}{{ chart_messages }}{% else %}{{ empty("Aucun message sur cette période.", "send") }}{% endif %}
+</section>
+
+<div class="grid-2 align-start">
+  <section class="card">
+    <h2>{{ icon("chart-pie") }}Conversations par type</h2>
+    {% if chart_kinds %}
+    <div class="donut-row">
+      {{ chart_kinds }}
+      <ul class="legend">
+        {% for r in by_kind %}<li><span class="swatch s-{{ r.kind }}"></span>{{ kind_labels[r.kind] }}<span class="muted"> · {{ r.threads }}</span></li>{% endfor %}
+      </ul>
+    </div>
+    {% else %}{{ empty("Aucune conversation sur cette période.", "message-square") }}{% endif %}
+  </section>
+  <section class="card">
+    <h2>{{ icon("activity") }}Conversations par jour et par type</h2>
+    {% if chart_daily_kinds %}
+    {{ chart_daily_kinds }}
+    <ul class="legend legend-row">{% for kind, name, values in daily.series %}<li><span class="swatch s-{{ kind }}"></span>{{ name }}</li>{% endfor %}</ul>
+    {% else %}{{ empty("Aucune conversation sur cette période.", "message-square") }}{% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("users") }}Activité par utilisateur <span class="muted">· {{ period.label }}</span></h2>{{ csv_link(prefix ~ "/activity/users.csv?" ~ period.query) }}</div>
+  {% if ranking %}
+  {{ chart_ranking }}
+  <table class="table">
+    <thead><tr><th>Identifiant</th><th>Rôle</th><th>Niveau</th><th class="num">Messages</th><th class="num">Conversations</th><th>Dernier message</th></tr></thead>
+    <tbody>
+    {% for r in ranking %}
+      <tr>
+        <td><a href="{{ prefix }}/users/{{ r.identifier }}">{{ r.identifier }}</a></td>
+        <td>{% if r.role %}{{ badge(r.role) }}{% else %}<span class="muted">compte supprimé</span>{% endif %}</td>
+        <td>{{ r.level }}</td>
+        <td class="num">{{ r.messages }}</td>
+        <td class="num"><a href="{{ prefix }}/conversations?{{ period.query }}&user={{ r.identifier | urlencode }}">{{ r.threads }}</a></td>
+        <td class="mono muted">{{ r.last_message or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucune activité utilisateur sur cette période.", "users") }}{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("clock") }}Consommation des quotas aujourd'hui</h2>{{ csv_link(prefix ~ "/activity/quotas.csv") }}</div>
+  {% if quotas %}
+  <table class="table">
+    <thead><tr><th>Identifiant</th><th>Rôle</th><th>Niveau</th><th class="num">Utilisé</th><th class="num">Quota</th><th class="quota-col">Consommation</th></tr></thead>
+    <tbody>
+    {% for q in quotas %}
+      <tr>
+        <td><a href="{{ prefix }}/users/{{ q.identifier }}">{{ q.identifier }}</a></td>
+        <td>{{ badge(q.role) }}</td>
+        <td>{{ q.level }}</td>
+        <td class="num">{{ q.used }}</td>
+        <td class="num">{% if q.quota is none %}<span class="muted">∞</span>{% else %}{{ q.quota }}{% endif %}</td>
+        <td class="quota-col">
+          {% if q.quota is none %}<span class="muted">illimité</span>
+          {% else %}<div class="progress" title="{{ q.used }} / {{ q.quota }}"><div class="progress-bar {% if q.exhausted %}progress-full{% endif %}" style="width: {{ (q.ratio * 100) | round }}%"></div></div>
+          {% if q.exhausted %}<span class="pill pill-warn">quota atteint</span>{% endif %}{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucun compte actif.", "users") }}{% endif %}
+</section>
+{% endblock %}

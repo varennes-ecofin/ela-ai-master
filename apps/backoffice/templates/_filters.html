@@ -1,0 +1,44 @@
+{#- Lot 5.4 — shared pieces of the activity pages.
+    Import with: {% from "_filters.html" import subnav, period_fields, period_presets, period_notice, pagination, csv_link with context %} -#}
+{% from "_macros.html" import icon with context %}
+
+{%- macro subnav(section) -%}
+<nav class="subnav" aria-label="Activité">
+  <a href="{{ prefix }}/activity" class="{% if section == 'activity' %}active{% endif %}">{{ icon("chart-line") }}<span>Activité</span></a>
+  <a href="{{ prefix }}/pedagogy" class="{% if section == 'pedagogy' %}active{% endif %}">{{ icon("graduation-cap") }}<span>Pédagogie</span></a>
+  <a href="{{ prefix }}/feedbacks" class="{% if section == 'feedbacks' %}active{% endif %}">{{ icon("thumbs-up") }}<span>Feedbacks</span></a>
+  <a href="{{ prefix }}/conversations" class="{% if section == 'conversations' %}active{% endif %}">{{ icon("message-square") }}<span>Conversations</span></a>
+</nav>
+{%- endmacro -%}
+
+{#- Date inputs of the period form (the form itself is written by the page, with its own extra filters). -#}
+{%- macro period_fields(period) -%}
+<label class="filter"><span class="filter-label">Du</span><input type="date" name="from" value="{{ period.start.isoformat() }}" required></label>
+<label class="filter"><span class="filter-label">Au</span><input type="date" name="to" value="{{ period.end.isoformat() }}" required></label>
+{%- endmacro -%}
+
+{#- Links to the 7 / 30 / 90-day presets; ``extra`` is a query-string fragment keeping the other filters. -#}
+{%- macro period_presets(period, extra="") -%}
+<div class="presets" role="group" aria-label="Raccourcis">
+  {% for n in (7, 30, 90) %}<a class="preset {% if period.days == n %}active{% endif %}" href="?days={{ n }}{% if extra %}&{{ extra }}{% endif %}">{{ n }} j</a>{% endfor %}
+</div>
+{%- endmacro -%}
+
+{%- macro period_notice(period) -%}
+{% if period.error %}<p class="error">{{ icon("circle-alert") }}<span>{{ period.error }}</span></p>{% endif %}
+{%- endmacro -%}
+
+{%- macro csv_link(href, title="Exporter ce tableau en CSV") -%}
+<a class="btn btn-ghost btn-sm csv" href="{{ href }}" title="{{ title }}">{{ icon("download") }}<span>CSV</span></a>
+{%- endmacro -%}
+
+{#- Previous / next links; ``base`` is the query string without ``page``. -#}
+{%- macro pagination(paging, base="") -%}
+{% if paging.pages > 1 %}
+<nav class="pagination" aria-label="Pages">
+  {% if paging.has_prev %}<a class="btn btn-ghost btn-sm" href="?{{ base }}{% if base %}&{% endif %}page={{ paging.page - 1 }}">{{ icon("chevron-right", "flip") }}<span>Précédent</span></a>{% endif %}
+  <span class="muted">Page {{ paging.page }} / {{ paging.pages }} · {{ paging.first }}–{{ paging.last }} sur {{ paging.total }}</span>
+  {% if paging.has_next %}<a class="btn btn-ghost btn-sm" href="?{{ base }}{% if base %}&{% endif %}page={{ paging.page + 1 }}"><span>Suivant</span>{{ icon("chevron-right") }}</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro -%}

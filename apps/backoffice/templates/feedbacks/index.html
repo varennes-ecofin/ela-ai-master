@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% from "_filters.html" import subnav, period_fields, period_presets, period_notice, csv_link, pagination with context %}
+{% set active = 'activity' %}
+{% set extra = (("user=" ~ (user | urlencode) ~ "&") if user else "") ~ (("score=" ~ score) if score else "") %}
+{% set extra = extra.rstrip("&") %}
+{% set base_query = period.query ~ ("&" ~ extra if extra else "") %}
+{% block title %}Feedbacks{% endblock %}
+{% block content %}
+{{ page_head("Feedbacks", "Retours (pouce levé / baissé) laissés par les étudiants sur les réponses d'ELA.", "thumbs-up") }}
+{{ subnav("feedbacks") }}
+
+<div class="kpis kpis-4">
+  <div class="kpi">{{ icon("star", "kpi-icon") }}<span class="kpi-value">{{ stats.total }}</span><span class="kpi-label">Feedbacks au total</span></div>
+  <div class="kpi">{{ icon("thumbs-up", "kpi-icon") }}<span class="kpi-value">{{ stats.positive }}</span><span class="kpi-label">Positifs</span></div>
+  <div class="kpi">{{ icon("thumbs-down", "kpi-icon") }}<span class="kpi-value">{{ stats.negative }}</span><span class="kpi-label">Négatifs</span></div>
+  <div class="kpi"><span class="kpi-value">{% if stats.rate is not none %}{{ stats.rate | round | int }} %{% else %}—{% endif %}</span><span class="kpi-label">Taux de satisfaction</span></div>
+</div>
+
+{{ period_notice(period) }}
+<form class="filters period-form" method="get" action="{{ prefix }}/feedbacks">
+  {{ period_fields(period) }}
+  <label class="filter"><span class="filter-label">Utilisateur</span>
+    <select name="user"><option value="">Tous</option>{% for u in users %}<option value="{{ u }}" {% if user == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+  <label class="filter"><span class="filter-label">Score</span>
+    <select name="score"><option value="">Tous</option><option value="1" {% if score == '1' %}selected{% endif %}>Positifs</option><option value="0" {% if score == '0' %}selected{% endif %}>Négatifs</option></select></label>
+  <button type="submit" class="btn btn-primary filter-btn">{{ icon("search") }}<span>Appliquer</span></button>
+  {{ period_presets(period, extra) }}
+</form>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("message-square") }}{{ paging.total }} feedback(s) <span class="muted">· {{ period.label }}</span></h2>{{ csv_link(prefix ~ "/feedbacks.csv?" ~ base_query) }}</div>
+  {% if rows %}
+  <div class="feedback-list">
+  {% for f in rows %}
+    <article class="feedback {% if f.score == 1 %}feedback-up{% else %}feedback-down{% endif %}">
+      <header class="feedback-head">
+        <span class="thumb">{{ icon("thumbs-up" if f.score == 1 else "thumbs-down") }}</span>
+        <a href="{{ prefix }}/users/{{ f.identifier }}"><strong>{{ f.identifier }}</strong></a>
+        <span class="muted">·</span>
+        <a href="{{ prefix }}/conversations/{{ f.thread_id }}">{{ f.thread_name or '(sans titre)' }}</a>
+        <span class="mono muted">{{ f.answered_at }}</span>
+      </header>
+      {% if f.comment %}<p class="feedback-comment">{{ icon("pencil") }}<span>{{ f.comment }}</span></p>{% endif %}
+      {% if f.answer %}<pre class="msg msg-assistant">{{ f.answer[:1500] }}{% if f.answer | length > 1500 %}…{% endif %}</pre>{% else %}<p class="muted">(réponse non disponible)</p>{% endif %}
+      <div class="feedback-actions" id="ctx-{{ f.id }}">
+        <button class="btn btn-ghost btn-sm" hx-get="{{ prefix }}/feedbacks/{{ f.id }}/context" hx-target="#ctx-{{ f.id }}" hx-swap="innerHTML">{{ icon("eye") }}<span>Voir le contexte</span></button>
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}{{ empty("Aucun feedback pour ces critères.", "star") }}{% endif %}
+  {{ pagination(paging, base_query) }}
+</section>
+{% endblock %}

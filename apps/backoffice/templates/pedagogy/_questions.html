@@ -1,0 +1,41 @@
+{% from "_macros.html" import icon, empty with context %}
+{% from "_filters.html" import csv_link with context %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("book-open") }}Questions par cours et chapitre</h2>{{ csv_link(prefix ~ "/pedagogy/questions-chapitres.csv?" ~ period.query) }}</div>
+  {% if by_chapter %}
+  <table class="table">
+    <thead><tr><th>Cours</th><th>Chapitre</th><th class="num">Questions</th><th class="num">Étudiants</th></tr></thead>
+    <tbody>
+    {% for r in by_chapter %}<tr><td>{{ r.course }}</td><td>{{ r.chapter }}</td><td class="num">{{ r.questions }}</td><td class="num">{{ r.students }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucune question enregistrée sur la période.", "message-square") }}{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("message-square") }}Dernières questions</h2>
+    <form class="inline-filter" method="get" action="{{ prefix }}/pedagogy">
+      <input type="hidden" name="tab" value="questions"><input type="hidden" name="from" value="{{ period.start.isoformat() }}"><input type="hidden" name="to" value="{{ period.end.isoformat() }}">
+      <select name="course" onchange="this.form.submit()"><option value="">Tous les cours</option>{% for c in courses %}<option value="{{ c }}" {% if course == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+      {{ csv_link(prefix ~ "/pedagogy/questions-recentes.csv?" ~ csv_query) }}
+    </form>
+  </div>
+  {% if recent %}
+  <table class="table">
+    <thead><tr><th>Date</th><th>Étudiant</th><th>Cours</th><th>Chapitre</th><th>Question</th><th class="num" title="Recherches / extraits cités">Rech. / extr.</th><th>Fil</th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr class="{% if r.refused %}row-error{% endif %}">
+        <td class="mono muted nowrap">{{ r.created_at | dt }}</td>
+        <td><a href="{{ prefix }}/users/{{ r.user_identifier }}">{{ r.user_identifier }}</a></td>
+        <td class="muted">{{ r.course or '—' }}</td><td class="muted">{{ r.chapter or '—' }}</td>
+        <td class="wrap">{{ r.question }}{% if r.refused %} <span class="pill pill-warn">refusée</span>{% elif r.general_knowledge %} <span class="pill pill-info">connaissances générales</span>{% endif %}</td>
+        <td class="num">{{ r.n_searches }} / {{ r.n_sources }}</td>
+        <td>{% if r.thread_id %}<a href="{{ prefix }}/conversations/{{ r.thread_id }}" title="Lire la conversation">{{ icon("eye") }}</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucune question pour ce cours sur la période.", "message-square") }}{% endif %}
+</section>

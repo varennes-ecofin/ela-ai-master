@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% from "_filters.html" import subnav with context %}
+{% set active = 'activity' %}
+{% block title %}{{ thread.name or 'Conversation' }}{% endblock %}
+{% block content %}
+{% call page_head(thread.name or "(sans titre)", None, "message-square") %}
+  <a class="btn btn-ghost" href="{{ prefix }}/conversations">{{ icon("chevron-right", "flip") }}<span>Toutes les conversations</span></a>
+{% endcall %}
+{{ subnav("conversations") }}
+
+<section class="card">
+  <dl class="dl dl-inline">
+    <dt>Utilisateur</dt><dd><a href="{{ prefix }}/users/{{ thread.identifier }}">{{ thread.identifier }}</a></dd>
+    <dt>Type</dt><dd><span class="pill pill-kind s-{{ thread.kind }}">{{ kind_label }}</span></dd>
+    <dt>Créée le</dt><dd class="mono">{{ thread.created_at or '—' }}</dd>
+    <dt>Messages</dt><dd>{{ messages }} de l'étudiant · {{ steps | length }} étape(s) affichée(s)</dd>
+    <dt>Étapes d'outils</dt><dd>{% if show_tools %}<a href="?tools=0">masquer</a>{% else %}<a href="?tools=1">afficher</a> <span class="muted">(recherches, exécutions de scripts)</span>{% endif %}</dd>
+  </dl>
+</section>
+
+{% if steps %}
+<div class="thread">
+{% for s in steps %}
+  {% if s.type == 'user_message' %}
+  <div class="bubble bubble-user">
+    <div class="bubble-meta">{{ icon("user-round") }}<span>{{ thread.identifier }}</span><span class="mono muted">{{ s.created_at }}</span></div>
+    <pre class="msg">{{ s.content[:3000] }}{% if s.content | length > 3000 %}…{% endif %}</pre>
+  </div>
+  {% elif s.type == 'assistant_message' %}
+  <div class="bubble bubble-assistant {% if s.is_error %}bubble-error{% endif %}">
+    <div class="bubble-meta">{{ icon("bot") }}<span>ELA</span><span class="mono muted">{{ s.created_at }}</span>
+      {% if s.feedback is not none %}<span class="pill {% if s.feedback == 1 %}pill-ok{% else %}pill-warn{% endif %}">{{ icon("thumbs-up" if s.feedback == 1 else "thumbs-down") }} feedback{% if s.feedback_comment %} — {{ s.feedback_comment }}{% endif %}</span>{% endif %}
+      {% if s.is_error %}<span class="pill pill-warn">erreur</span>{% endif %}
+    </div>
+    {% if s.content %}<pre class="msg">{{ s.content[:3000] }}{% if s.content | length > 3000 %}…{% endif %}</pre>{% endif %}
+  </div>
+  {% else %}
+  <div class="bubble bubble-tool {% if s.is_error %}bubble-error{% endif %}">
+    <div class="bubble-meta">{{ icon("wrench") }}<span>{{ s.name or s.type }}</span><span class="muted">{{ s.type }}</span><span class="mono muted">{{ s.created_at }}</span></div>
+    {% if s.content %}<pre class="msg">{{ s.content[:1500] }}{% if s.content | length > 1500 %}…{% endif %}</pre>{% endif %}
+  </div>
+  {% endif %}
+{% endfor %}
+</div>
+{% else %}
+<section class="card">{{ empty("Cette conversation ne contient aucun message.", "message-square") }}</section>
+{% endif %}
+{% endblock %}

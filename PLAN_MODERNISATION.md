@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 2.1 — 2026-10-21
+> **Version** : 2.2 — 2026-10-27
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : lots 5.1 (socle) et 5.2 (utilisateurs) validés · **lot 5.3 (cours, ingestion en tâche de fond) livré le 26/10, à tester** · lots 5.4 → 5.6 puis « Annales » à suivre, puis Phase 6
+> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : lots 5.1 (socle), 5.2 (utilisateurs) et 5.3 (cours, ingestion) validés · **lots 5.4a (activité, pédagogie, feedbacks, conversations) et 5.4b (retrait de Streamlit) livrés le 27/10, à tester** · puis 5.5 → 5.6, « Annales », CAS, Phase 6
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -45,7 +45,7 @@
 ```
                  ┌──────────── Caddy (HTTPS, Let's Encrypt) ────────────┐
                  │  /            → app (Chainlit)                        │
-                 │  /admin       → admin (Streamlit → FastAPI/HTMX)      │
+                 │  /backoffice  → backoffice (FastAPI + Jinja2 + HTMX)   │
                  └───────────────────────────────────────────────────────┘
                               │                          │
         ┌─────────────────────▼──────────┐   ┌───────────▼────────────┐
@@ -74,7 +74,7 @@
 ```
 ela-ai/
 ├── pyproject.toml              # uv ; extras : chat, admin, ingest-local, dev
-├── docker-compose.yml          # caddy, db (pgvector), app, admin
+├── docker-compose.yml          # caddy, db (pgvector), app, backoffice, sandbox
 ├── Caddyfile
 ├── .env.example                # toutes les variables documentées, sans valeurs
 ├── alembic/                    # migrations versionnées (remplace pgAdmin)
@@ -89,7 +89,7 @@ ela-ai/
 │   └── eval/                   # jeu de test, métriques, rapport
 ├── apps/
 │   ├── chat/                   # Chainlit : app.py, data_layer.py, ui/
-│   └── admin/                  # Streamlit (phase 1–4) puis FastAPI+HTMX (phase 5)
+│   └── backoffice/             # FastAPI + Jinja2 + HTMX (phase 5 ; Streamlit retiré au lot 5.4b)
 ├── scripts/                    # ela-ingest, ela-eval, ela-create-user
 └── tests/                      # unit (sans réseau) + integration (PG en conteneur)
 ```
@@ -250,7 +250,8 @@ Lots (chacun livré testé) :
 1. ✅ **5.1 Socle** (livré le 21/10, validé le 22/10, version `2.0.0a12`) : `apps/backoffice/` (FastAPI + Jinja2 + HTMX), connexion sur les comptes `users` (`admin`, `supervisor`), cookie de session signé, CSRF, verrouillage après échecs, compte revérifié à chaque requête, `ela.auth` (`AuthProvider`, `Identity`, `ProvisioningPolicy`, `AUTH_PROVIDER=local`), table `admin_audit` (migration `0009`), accueil (indicateurs, dernières conversations, journal), `/backoffice/healthz`, service `backoffice` dans compose + extraits Caddy, 21 tests hors ligne + 3 PostgreSQL.
 2. ✅ **5.2 Utilisateurs et quotas** (livré le 22/10, validé le 26/10, version `2.0.0a13`) : liste filtrable, fiche avec activité, création (mot de passe saisi ou généré, affiché une seule fois), rôle/niveau/quota, réinitialisation, désactivation, purge des comptes sans activité, **import CSV** avec prévisualisation et identifiants remis une seule fois (`ela-users import` en CLI), mot de passe personnel, politique de mots de passe (8 caractères, chiffre, spécial), audit de chaque action. Décisions du 22/10 : identifiant = partie de l'adresse universitaire avant le `@` ; pas de suppression physique sauf compte sans activité ; `supervisor` en lecture seule sans quotas ni mots de passe ; changement de mot de passe des étudiants dans Chainlit reporté (lot CAS).
 3. ✅ **5.3 Cours et ingestion** (livré le 26/10, version `2.0.0a14`) : arborescence `data/latex`, dépôt de fichiers ou de `.zip`, suppression, **déplacement d'un cours entre niveaux** (renommage + ré-indexation automatique), état de la base (chunks par cours, diagnostic disque/base), ingestion en tâche de fond dans un processus enfant (table `jobs`, migration `0010`, progression HTMX, historique), racine `data/annales` préparée. Décisions du 26/10 : `.tex/.sty/.cls/.bib` + zip ; un job à la fois ; Streamlit conservé jusqu'au 5.4.
-4. **5.4 Activité, pédagogie, feedbacks, conversations** : parité avec les vues Streamlit (Chart.js), puis retrait de Streamlit.
+4. ✅ **5.4a Activité, pédagogie, feedbacks, conversations** (livré le 27/10, version `2.0.0a15`) : parité avec les vues Streamlit en lecture seule pour `admin` et `supervisor` — onglet Activité (indicateurs, messages par jour, conversations par type, classement, quotas), Pédagogie (quiz, exercices, questions, hors corpus, code), Feedbacks (statistiques, liste paginée, contexte de la réponse), Conversations (liste, lecteur en texte brut avec étapes d'outils) ; période commune (30 jours par défaut, raccourcis 7/30/90, dates dans l'URL), export CSV de chaque tableau, graphiques **SVG générés côté serveur** (décision du 27/10 : pas de Chart.js). Cinq types de fils déduits du nom (chat, quiz, exercice, fiche, code). Markdown dans le lecteur reporté.
+   ✅ **5.4b Retrait de Streamlit** (livré le 27/10, version `2.0.0a16`) : `apps/admin/`, extra `admin`, service `admin` du compose, blocs `/admin` de Caddy et authentification basique, `ela-hash --caddy`, CI, `.env.example`, docs (`DEPLOIEMENT_VPS.md` § 9 : procédure sur le VPS). Jalon **J5** atteint côté code ; déploiement du backoffice sur le VPS à faire par Gilles.
 5. **5.5 Évaluation** : `ela-eval answer` / `retrieval` depuis l'interface (job), historique des rapports, comparaison ; `ela-eval code` (évaluation de l'Atelier Code pour comparer les modèles).
 6. **5.6 Exploitation** : sauvegardes PostgreSQL automatisées, healthchecks exposés, journal applicatif consultable, documentation.
 7. **Annales** (décidé le 26/10, après le 5.4) : ingestion des sujets d'examen et corrigés LaTeX de `data/annales/{M1|M2}/<Cours>/` en chunks `exam` (énoncé + corrigé), tenus à l'écart des recherches de cours ; `generate_exercise` et `check_step` s'appuient sur de vrais exercices et corrigés ; PDF/Word des collègues en seconde étape (énoncés seulement, formules dégradées à l'extraction).

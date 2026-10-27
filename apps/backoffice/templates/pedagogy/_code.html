@@ -1,0 +1,41 @@
+{% from "_macros.html" import icon, empty with context %}
+{% from "_filters.html" import csv_link with context %}
+{% if runs %}
+<div class="kpis kpis-4">
+  <div class="kpi"><span class="kpi-value">{{ totals.runs }}</span><span class="kpi-label">Exécutions</span></div>
+  <div class="kpi"><span class="kpi-value">{{ totals.ok }}<small>{% if totals.runs %}{{ (100 * totals.ok / totals.runs) | round | int }} %{% endif %}</small></span><span class="kpi-label">Réussies</span></div>
+  <div class="kpi"><span class="kpi-value">{{ totals.students }}</span><span class="kpi-label">Étudiants</span></div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("code-xml") }}Par statut et origine</h2>{{ csv_link(prefix ~ "/pedagogy/code-executions.csv?" ~ period.query) }}</div>
+  <table class="table">
+    <thead><tr><th>Statut</th><th>Origine</th><th class="num">Exécutions</th><th class="num">Étudiants</th><th class="num">Durée moyenne</th><th class="num">Figures</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr><td><span class="pill {% if r.status == 'ok' %}pill-ok{% elif r.status in ('error', 'timeout') %}pill-warn{% else %}pill-off{% endif %}">{{ r.status }}</span></td><td>{{ r.origin }}</td><td class="num">{{ r.runs }}</td><td class="num">{{ r.students }}</td><td class="num">{{ r.avg_seconds }} s</td><td class="num">{{ r.figures }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("triangle-alert") }}Erreurs les plus fréquentes</h2>{{ csv_link(prefix ~ "/pedagogy/code-erreurs.csv?" ~ period.query) }}</div>
+  {% if errors %}
+  <table class="table">
+    <thead><tr><th>Erreur</th><th class="num">Exécutions</th><th>Dernière</th></tr></thead>
+    <tbody>{% for r in errors %}<tr><td class="wrap"><code>{{ r.error }}</code></td><td class="num">{{ r.runs }}</td><td class="mono muted nowrap">{{ r.last_seen | dt }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}{{ empty("Aucune erreur d'exécution sur la période.", "circle-check") }}{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("users") }}Par étudiant <span class="muted">· quota journalier</span></h2>{{ csv_link(prefix ~ "/pedagogy/code-etudiants.csv?" ~ period.query) }}</div>
+  <table class="table">
+    <thead><tr><th>Étudiant</th><th class="num">Exécutions</th><th class="num">Réussies</th><th class="num">Aujourd'hui</th></tr></thead>
+    <tbody>{% for r in by_student %}<tr><td><a href="{{ prefix }}/users/{{ r.user_identifier }}">{{ r.user_identifier }}</a></td><td class="num">{{ r.runs }}</td><td class="num">{{ r.ok }}</td><td class="num">{{ r.today }}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% else %}
+<section class="card">{{ empty("Aucune exécution de script sur la période (Atelier Code : SANDBOX_URL doit être configuré).", "code-xml") }}</section>
+{% endif %}

@@ -1,0 +1,41 @@
+{% from "_macros.html" import icon, empty with context %}
+{% from "_filters.html" import csv_link with context %}
+<div class="kpis kpis-4">
+  <div class="kpi"><span class="kpi-value">{{ kpis.quizzes }}</span><span class="kpi-label">Quiz</span></div>
+  <div class="kpi"><span class="kpi-value">{{ kpis.answers }}</span><span class="kpi-label">Réponses</span></div>
+  <div class="kpi"><span class="kpi-value">{% if kpis.answers %}{{ (100 * kpis.correct / kpis.answers) | round | int }} %{% else %}—{% endif %}</span><span class="kpi-label">Taux de réussite</span></div>
+  <div class="kpi"><span class="kpi-value">{{ kpis.students }}</span><span class="kpi-label">Étudiants</span></div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("list-checks") }}Réussite par sujet <span class="muted">· les plus faibles d'abord</span></h2>{{ csv_link(prefix ~ "/pedagogy/quiz-sujets.csv?" ~ period.query) }}</div>
+  {% if by_topic %}
+  <table class="table">
+    <thead><tr><th>Sujet</th><th>Cours</th><th class="num">Réponses</th><th class="num">Correctes</th><th class="num">Réussite</th><th class="num">Étudiants</th></tr></thead>
+    <tbody>
+    {% for r in by_topic %}
+      <tr>
+        <td>{{ r.topic }}</td><td class="muted">{{ r.course or '—' }}</td>
+        <td class="num">{{ r.answers }}</td><td class="num">{{ r.correct }}</td>
+        <td class="num"><span class="pill {% if r.success_pct < 50 %}pill-warn{% elif r.success_pct >= 80 %}pill-ok{% else %}pill-info{% endif %}">{{ r.success_pct }} %</span></td>
+        <td class="num">{{ r.students }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucun quiz sur la période.", "graduation-cap") }}{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("circle-alert") }}Questions les plus ratées</h2>{{ csv_link(prefix ~ "/pedagogy/quiz-questions-ratees.csv?" ~ period.query) }}</div>
+  {% if failed %}
+  <table class="table">
+    <thead><tr><th>Question</th><th>Sujet</th><th class="num">Échecs</th><th class="num">Étudiants</th><th>Dernier échec</th></tr></thead>
+    <tbody>
+    {% for r in failed %}
+      <tr><td class="wrap">{{ r.question }}</td><td class="muted">{{ r.topic }}</td><td class="num">{{ r.failures }}</td><td class="num">{{ r.students }}</td><td class="mono muted nowrap">{{ r.last_seen | dt }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucune erreur enregistrée sur la période.", "circle-check") }}{% endif %}
+</section>

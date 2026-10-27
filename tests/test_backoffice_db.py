@@ -38,6 +38,11 @@ async def db(monkeypatch: pytest.MonkeyPatch):
     yield engine
     for stmt in (
         "DELETE FROM admin_audit WHERE actor LIKE 'pytest_%'",
+        'DELETE FROM feedbacks WHERE "threadId" IN (SELECT id FROM threads WHERE "userIdentifier" LIKE \'pytest_%\')',
+        "DELETE FROM quiz_results WHERE user_identifier LIKE 'pytest_%'",
+        "DELETE FROM exercise_attempts WHERE user_identifier LIKE 'pytest_%'",
+        "DELETE FROM student_activity WHERE user_identifier LIKE 'pytest_%'",
+        "DELETE FROM code_runs WHERE user_identifier LIKE 'pytest_%'",
         'DELETE FROM steps WHERE "threadId" IN (SELECT id FROM threads WHERE "userIdentifier" LIKE \'pytest_%\')',
         "DELETE FROM threads WHERE \"userIdentifier\" LIKE 'pytest_%'",
         "DELETE FROM users WHERE identifier LIKE 'pytest_%'",
@@ -345,3 +350,203 @@ def test_knowledge_base_on_pgvector(tmp_path):
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS rag_chunks"))
     engine.dispose()
+
+
+# --- lot 5.4: activity, pedagogy, feedback, conversations ----------------------------
+
+
+async def _seed_conversation(
+    db, student: str, name: str, messages: int = 2, feedback: int | None = None
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """One thread with ``messages`` student/assistant pairs and a tool step; returns (thread id, last answer id)."""
+    tid = uuid.uuid4()
+    await db.execute(
+        'INSERT INTO threads (id, name, "createdAt", "userIdentifier") VALUES (:t, :n, NOW()::TEXT, :i)',
+        {"t": tid, "n": name, "i": student},
+    )
+    answer = uuid.uuid4()
+    for k in range(messages):
+        answer = uuid.uuid4()
+        await db.execute(
+            'INSERT INTO steps (id, name, type, "threadId", "createdAt", input) '
+            "VALUES (gen_random_uuid(), 'm', 'user_message', :t, (NOW() + make_interval(secs => :k))::TEXT, :q)",
+            {"t": tid, "k": 2 * k, "q": f"Question {k} ?"},
+        )
+        await db.execute(
+            'INSERT INTO steps (id, name, type, "threadId", "createdAt", output) '
+            "VALUES (:s, 'a', 'assistant_message', :t, (NOW() + make_interval(secs => :k))::TEXT, :o)",
+            {"s": answer, "t": tid, "k": 2 * k + 1, "o": f"Réponse {k} [S1]"},
+        )
+    await db.execute(
+        'INSERT INTO steps (id, name, type, "threadId", "createdAt", output) '
+        "VALUES (gen_random_uuid(), '🔎 Recherche', 'tool', :t, (NOW() + make_interval(secs => 100))::TEXT, '5 extr.')",
+        {"t": tid},
+    )
+    if feedback is not None:
+        await db.execute(
+            'INSERT INTO feedbacks (id, "forId", "threadId", value, comment) '
+            "VALUES (gen_random_uuid(), :s, :t, :v, :c)",
+            {"s": answer, "t": tid, "v": feedback, "c": "Très clair" if feedback else "Trop long"},
+        )
+    return tid, answer
+
+
+async def test_stats_and_conversations(db):
+    from datetime import date, timedelta
+
+    from ela.db import conversations, feedbacks, stats
+
+    student = f"pytest_{uuid.uuid4().hex[:8]}"
+    await _create_user(db, student, "student", level="M1")
+    await db.execute("UPDATE users SET daily_quota = 3 WHERE identifier = :i", {"i": student})
+    chat_id, _ = await _seed_conversation(db, student, "Question sur ADF", messages=2, feedback=1)
+    quiz_id, rated = await _seed_conversation(db, student, "🎓 Quiz : ARMA", messages=1, feedback=0)
+    await _seed_conversation(db, student, "✏️ Exercice : GARCH", messages=1)
+    start, end = date.today() - timedelta(days=7), date.today() + timedelta(days=1)
+
+    daily = await stats.daily_messages(start, end, student)
+    assert sum(r["messages"] for r in daily) == 4 and all(isinstance(r["day"], date) for r in daily)
+    kinds = {r["kind"]: r["threads"] for r in await stats.threads_by_kind(start, end, student)}
+    assert kinds == {"chat": 1, "quiz": 1, "exercise": 1}
+    by_day = await stats.daily_threads_by_kind(start, end, student)
+    assert sum(r["threads"] for r in by_day) == 3 and {r["kind"] for r in by_day} == {"chat", "quiz", "exercise"}
+    mine = [r for r in await stats.messages_by_user(start, end) if r["identifier"] == student]
+    assert mine and mine[0]["messages"] == 4 and mine[0]["threads"] == 3 and mine[0]["role"] == "student"
+    quota = [q for q in await stats.quota_usage() if q["identifier"] == student][0]
+    assert quota["quota"] == 3 and quota["used"] == 4 and quota["exhausted"] and quota["ratio"] == 1.0
+    assert student in await stats.user_identifiers()
+
+    page = await conversations.list_threads(start, end, user=student)
+    assert page.total == 3 and [t["kind"] for t in page.rows].count("quiz") == 1
+    chat = [t for t in page.rows if t["id"] == str(chat_id)][0]
+    assert chat["messages"] == 2 and chat["steps"] == 5 and chat["feedbacks"] == 1 and chat["kind"] == "chat"
+    only_quiz = await conversations.list_threads(start, end, user=student, kind="quiz")
+    assert only_quiz.total == 1 and only_quiz.rows[0]["name"] == "🎓 Quiz : ARMA"
+    assert (await conversations.list_threads(start, end, user=student, limit=2, offset=2)).rows.__len__() == 1
+
+    thread = await conversations.get_thread(str(quiz_id))
+    assert thread and thread["kind"] == "quiz" and thread["identifier"] == student
+    assert (
+        await conversations.get_thread("not-a-uuid") is None
+        and await conversations.get_thread(str(uuid.uuid4())) is None
+    )
+    steps = await conversations.thread_steps(str(chat_id))
+    assert [s["type"] for s in steps] == ["user_message", "assistant_message"] * 2
+    assert (
+        steps[0]["content"] == "Question 0 ?"
+        and steps[-1]["feedback"] == 1
+        and steps[-1]["feedback_comment"] == "Très clair"
+    )
+    with_tools = await conversations.thread_steps(str(chat_id), include_tools=True)
+    assert len(with_tools) == 5 and with_tools[-1]["type"] == "tool" and with_tools[-1]["name"] == "🔎 Recherche"
+
+    st = await feedbacks.stats()
+    assert st.total >= 2 and st.positive >= 1 and st.negative >= 1
+    negative = await feedbacks.list_feedbacks(start, end, user=student, score=0)
+    assert (
+        negative.total == 1 and negative.rows[0]["step_id"] == str(rated) and negative.rows[0]["comment"] == "Trop long"
+    )
+    assert negative.rows[0]["thread_name"] == "🎓 Quiz : ARMA" and negative.rows[0]["answer"] == "Réponse 0 [S1]"
+    assert (await feedbacks.list_feedbacks(start, end, user=student)).total == 2
+    ctx = await feedbacks.context(negative.rows[0]["id"])
+    assert ctx and ctx["feedback"]["identifier"] == student and [s["rated"] for s in ctx["steps"]] == [False, True]
+    assert await feedbacks.context("nope") is None and await feedbacks.context(str(uuid.uuid4())) is None
+
+
+async def test_pedagogy_queries(db):
+    from datetime import date, timedelta
+
+    from ela.db import pedagogy
+
+    student = f"pytest_{uuid.uuid4().hex[:8]}"
+    for correct in (True, False, False):
+        await db.execute(
+            "INSERT INTO quiz_results (user_identifier, quiz_id, topic, course, chapter, question_index, question,"
+            " options, correct_index, answer_index, correct)"
+            " VALUES (:u, 'q1', 'ADF', 'UTS', 'Ch. 3', 0, 'H0 ?', '[]'::jsonb, 0, 1, :c)",
+            {"u": student, "c": correct},
+        )
+    await db.execute(
+        "INSERT INTO exercise_attempts (user_identifier, exercise_id, topic, attempt_index, attempt, verdict,"
+        " completed) VALUES (:u, 'e1', 'ADF', 0, 'x', 'correct', true)",
+        {"u": student},
+    )
+    await db.execute(
+        "INSERT INTO student_activity (user_identifier, question, course, chapter, n_sources, n_searches)"
+        " VALUES (:u, 'ADF ?', 'UTS', 'Ch. 3', 2, 1), (:u, 'Bitcoin ?', NULL, NULL, 0, 1)",
+        {"u": student},
+    )
+    await db.execute(
+        "UPDATE student_activity SET refused = true WHERE user_identifier = :u AND question = 'Bitcoin ?'",
+        {"u": student},
+    )
+    await db.execute(
+        "INSERT INTO code_runs (user_identifier, origin, status, elapsed_ms, n_images, error)"
+        " VALUES (:u, 'workshop', 'ok', 400, 1, NULL), (:u, 'agent', 'error', 100, 0, 'NameError: x')",
+        {"u": student},
+    )
+    start, end = date.today() - timedelta(days=1), date.today() + timedelta(days=1)
+
+    k = await pedagogy.quiz_kpis(start, end)
+    assert k["answers"] >= 3 and k["quizzes"] >= 1 and k["students"] >= 1
+    adf = [r for r in await pedagogy.quiz_by_topic(start, end) if r["topic"] == "ADF" and r["course"] == "UTS"]
+    assert adf and adf[0]["answers"] >= 3 and isinstance(adf[0]["success_pct"], int)
+    failed = [r for r in await pedagogy.failed_questions(start, end) if r["question"] == "H0 ?"]
+    assert failed and failed[0]["failures"] >= 2 and failed[0]["last_seen"] is not None
+    ex = [r for r in await pedagogy.exercise_stats(start, end) if r["topic"] == "ADF"]
+    assert ex and ex[0]["completed"] >= 1 and ex[0]["correct_steps_pct"] == 100
+    chapters = await pedagogy.questions_by_chapter(start, end)
+    assert any(r["course"] == "UTS" and r["chapter"] == "Ch. 3" for r in chapters)
+    recent = await pedagogy.recent_questions(start, end, "UTS")
+    assert all(r["course"] == "UTS" for r in recent) and any(r["user_identifier"] == student for r in recent)
+    ooc = [r for r in await pedagogy.out_of_corpus(start, end) if r["user_identifier"] == student]
+    assert ooc and ooc[0]["reason"] == "refusée (hors domaine)"
+    assert "UTS" in await pedagogy.courses_with_questions()
+    runs = {(r["status"], r["origin"]): r for r in await pedagogy.code_runs(start, end)}
+    assert (
+        ("ok", "workshop") in runs
+        and runs[("ok", "workshop")]["figures"] >= 1
+        and isinstance(runs[("ok", "workshop")]["avg_seconds"], float)
+    )
+    assert any(r["error"] == "NameError: x" for r in await pedagogy.code_errors(start, end))
+    me = [r for r in await pedagogy.code_by_student(start, end) if r["user_identifier"] == student][0]
+    assert me["runs"] == 2 and me["ok"] == 1 and me["today"] == 2
+
+    # an unreachable table never raises
+    assert await pedagogy.quiz_kpis(date(1900, 1, 1), date(1900, 1, 2)) == {
+        "answers": 0,
+        "correct": 0,
+        "quizzes": 0,
+        "students": 0,
+    }
+
+
+async def test_activity_pages_on_postgres(db):
+    from backoffice.main import create_app
+    from ela.config import get_settings
+
+    admin = f"pytest_{uuid.uuid4().hex[:8]}"
+    student = f"pytest_{uuid.uuid4().hex[:8]}"
+    await _create_user(db, admin, "admin")
+    await _create_user(db, student, "student", level="M2")
+    tid, _ = await _seed_conversation(db, student, "💻 Code : VAR", messages=1, feedback=1)
+
+    app = create_app(get_settings())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", follow_redirects=False) as client:
+        r = await client.get(f"{PREFIX}/login")
+        token = r.cookies["ela_bo_csrf"]
+        r = await client.post(f"{PREFIX}/login", data={"csrf_token": token, "identifier": admin, "password": "s3cret"})
+        assert r.status_code == 303
+        r = await client.get(f"{PREFIX}/activity?days=7&user={student}")
+        assert r.status_code == 200 and "chart-line" in r.text and "Code" in r.text
+        r = await client.get(f"{PREFIX}/conversations?kind=code&user={student}")
+        assert r.status_code == 200 and f"/conversations/{tid}" in r.text
+        r = await client.get(f"{PREFIX}/conversations/{tid}?tools=1")
+        assert r.status_code == 200 and "Réponse 0 [S1]" in r.text and "🔎 Recherche" in r.text
+        r = await client.get(f"{PREFIX}/feedbacks?user={student}")
+        assert r.status_code == 200 and "Très clair" in r.text
+        r = await client.get(f"{PREFIX}/pedagogy?tab=code")
+        assert r.status_code == 200
+        r = await client.get(f"{PREFIX}/conversations.csv?user={student}")
+        assert r.status_code == 200 and "💻 Code : VAR" in r.text

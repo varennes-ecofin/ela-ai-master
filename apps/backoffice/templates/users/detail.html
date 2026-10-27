@@ -46,6 +46,13 @@
       <dt>Tentatives d'exercice</dt><dd>{{ activity.exercise_attempts }}</dd>
       <dt>Exécutions de code</dt><dd>{{ activity.code_runs }}</dd>
     </dl>
+    {% if has_activity %}
+    <p class="links-row">
+      <a class="btn btn-ghost btn-sm" href="{{ prefix }}/conversations?days=90&user={{ account.identifier | urlencode }}">{{ icon("message-square") }}<span>Conversations</span></a>
+      <a class="btn btn-ghost btn-sm" href="{{ prefix }}/activity?days=90&user={{ account.identifier | urlencode }}">{{ icon("activity") }}<span>Activité</span></a>
+      <a class="btn btn-ghost btn-sm" href="{{ prefix }}/feedbacks?days=90&user={{ account.identifier | urlencode }}">{{ icon("thumbs-up") }}<span>Feedbacks</span></a>
+    </p>
+    {% endif %}
   </section>
 </div>
 

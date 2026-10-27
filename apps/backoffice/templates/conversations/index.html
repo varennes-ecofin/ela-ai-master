@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% from "_filters.html" import subnav, period_fields, period_presets, period_notice, csv_link, pagination with context %}
+{% set active = 'activity' %}
+{% set extra = (("user=" ~ (user | urlencode) ~ "&") if user else "") ~ (("kind=" ~ kind) if kind else "") %}
+{% set extra = extra.rstrip("&") %}
+{% set base_query = period.query ~ ("&" ~ extra if extra else "") %}
+{% block title %}Conversations{% endblock %}
+{% block content %}
+{{ page_head("Conversations", "Échanges entre les étudiants et ELA ; ouvrez une conversation pour la lire.", "message-square") }}
+{{ subnav("conversations") }}
+
+{{ period_notice(period) }}
+<form class="filters period-form" method="get" action="{{ prefix }}/conversations">
+  {{ period_fields(period) }}
+  <label class="filter"><span class="filter-label">Utilisateur</span>
+    <select name="user"><option value="">Tous</option>{% for u in users %}<option value="{{ u }}" {% if user == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></label>
+  <label class="filter"><span class="filter-label">Type</span>
+    <select name="kind"><option value="">Tous</option>{% for k in kinds %}<option value="{{ k }}" {% if kind == k %}selected{% endif %}>{{ kind_labels[k] }}</option>{% endfor %}</select></label>
+  <button type="submit" class="btn btn-primary filter-btn">{{ icon("search") }}<span>Appliquer</span></button>
+  {{ period_presets(period, extra) }}
+</form>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon("message-square") }}{{ paging.total }} conversation(s) <span class="muted">· {{ period.label }}</span></h2>{{ csv_link(prefix ~ "/conversations.csv?" ~ base_query) }}</div>
+  {% if rows %}
+  <table class="table">
+    <thead><tr><th>Date</th><th>Type</th><th>Nom</th><th>Utilisateur</th><th class="num">Messages</th><th class="num">Feedbacks</th></tr></thead>
+    <tbody>
+    {% for t in rows %}
+      <tr>
+        <td class="mono muted nowrap">{{ t.created_at }}</td>
+        <td><span class="pill pill-kind s-{{ t.kind }}">{{ kind_labels[t.kind] }}</span></td>
+        <td><a href="{{ prefix }}/conversations/{{ t.id }}">{{ t.name or '(sans titre)' }}</a></td>
+        <td><a href="{{ prefix }}/users/{{ t.identifier }}">{{ t.identifier }}</a></td>
+        <td class="num">{{ t.messages }}</td>
+        <td class="num">{% if t.feedbacks %}{{ t.feedbacks }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucune conversation pour ces critères.", "message-square") }}{% endif %}
+  {{ pagination(paging, base_query) }}
+</section>
+{% endblock %}

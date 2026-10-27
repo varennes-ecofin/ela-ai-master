@@ -6,16 +6,12 @@
 # (docker compose le fusionne automatiquement avec docker-compose.yml) :
 #   cp deploy/docker-compose.override.vps.yml docker-compose.override.yml
 #
-# Effet : `app`, `admin` et `backoffice` rejoignent le réseau « proxy » en plus
-# des leurs ; Caddy les atteint par leur nom de service (app:8000, admin:8501,
-# backoffice:8080). Les ports 127.0.0.1:8000 / 8501 / 8502 restent publiés
-# pour les tests locaux.
+# Effet : `app` et `backoffice` rejoignent le réseau « proxy » en plus des
+# leurs ; Caddy les atteint par leur nom de service (app:8000, backoffice:8080).
+# Les ports 127.0.0.1:8000 / 8502 restent publiés pour les tests locaux.
 # ============================================================
 services:
   app:
-    networks:
-      - proxy
-  admin:
     networks:
       - proxy
   backoffice:

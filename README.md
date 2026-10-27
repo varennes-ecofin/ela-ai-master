@@ -14,7 +14,7 @@ ELA AI est un assistant pédagogique en économétrie (séries temporelles, éco
 - 👁️ **Vision** : les images jointes (graphiques, équations, sorties logicielles) sont transcrites par un modèle multimodal puis traitées par l'agent.
 - 🎓 **Quiz** (persistants, difficulté adaptative, relance ciblée sur les erreurs), ✏️ **Exercices socratiques** (« Vérifier mon étape », indices progressifs, corrigé), 📄 **Fiches de révision** par chapitre (`/fiche`, générées depuis les slides, téléchargeables en Markdown, partagées entre étudiants), 📈 **Bilan** de l'étudiant (`/bilan`), 💻 **Atelier Code** (Python / R, exécution des scripts Python dans un bac à sable isolé avec sortie et graphiques, correction automatique, quota journalier) et, après chaque réponse, des **suggestions de suivi** (quiz, exercice, fiche, exemple Python) — tous ancrés dans le cours.
 - 🔐 **Comptes** en base PostgreSQL (bcrypt), rôles, niveau, quota journalier.
-- 🛠️ **Backoffice** (Streamlit) : utilisateurs, base de connaissances, activité, **pédagogie** (réussite aux quiz, exercices, questions par chapitre, sujets hors corpus), feedbacks, conversations. Un **nouveau backoffice** (FastAPI + HTMX, `/backoffice`) le remplace page par page : connexion par compte (`admin`, `supervisor`), journal d'administration, tableau de bord (phase 5).
+- 🛠️ **Backoffice** (FastAPI + HTMX, `/backoffice`) : connexion par compte (`admin`, `supervisor`), journal d'administration, tableau de bord, utilisateurs et quotas (import CSV), cours et ingestion en tâche de fond, **activité** (volume quotidien, conversations par type, classement, quotas), **pédagogie** (réussite aux quiz, exercices, questions par chapitre, sujets hors corpus, atelier code), **feedbacks** et **lecteur de conversations**, export CSV de chaque tableau.
 - 🔌 **Fournisseurs LLM interchangeables** (Cerebras, ILaaS, Groq — API compatibles OpenAI) par simple configuration.
 
 ## Architecture
@@ -36,13 +36,12 @@ ela-ai/
 │   ├── auth/               #   fournisseurs d'identité (local ; CAS à venir)
 │   └── cli/                #   `ela-users`, `ela-hash`
 ├── apps/chat/              # application Chainlit (app.py, ui.py : étapes, panneau de sources, quiz, exercice)
-├── apps/admin/             # backoffice Streamlit (en cours de remplacement)
-├── apps/backoffice/        # nouveau backoffice FastAPI + Jinja2 + HTMX (phase 5)
+├── apps/backoffice/        # backoffice FastAPI + Jinja2 + HTMX (phase 5)
 ├── tests/                  # tests unitaires + intégration PostgreSQL
 ├── .chainlit/, public/, chainlit.md   # configuration et assets Chainlit (racine)
 ├── eval/questions.yaml     # questions de référence (rapports dans eval/reports/)
 ├── data/latex/             # cours .tex (non versionné) ; data/hf-cache, data/flashrank : modèles téléchargés
-├── Caddyfile, docker-compose.yml, Dockerfile, apps/admin/Dockerfile, apps/backoffice/Dockerfile
+├── Caddyfile, docker-compose.yml, Dockerfile, apps/backoffice/Dockerfile
 └── .env.example            # modèle documenté de configuration
 ```
 
@@ -53,7 +52,7 @@ Prérequis : Python 3.11 ou 3.12, PostgreSQL local, une clé API Cerebras.
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # Windows   (source .venv/bin/activate sous Linux/macOS)
-pip install -e ".[admin,backoffice,dev]"   # paquet ela + backoffices + outils de dev
+pip install -e ".[backoffice,dev]"   # paquet ela + backoffice + outils de dev
 copy .env.example .env            # puis renseigner les valeurs (voir ci-dessous)
 ```
 
@@ -104,13 +103,12 @@ Sur le serveur, l'image `pgvector/pgvector:pg15` du compose inclut l'extension.
 
 ```bash
 chainlit run apps/chat/app.py -w         # chat : http://localhost:8000
-python apps/backoffice/main.py --reload  # nouveau backoffice : http://localhost:8502/backoffice/
-cd apps/admin && streamlit run app.py    # backoffice Streamlit : http://localhost:8501
+python apps/backoffice/main.py --reload  # backoffice : http://localhost:8502/backoffice/
 ```
 
 ### Backoffice (FastAPI + HTMX)
 
-`apps/backoffice/` remplace progressivement Streamlit (phase 5) : FastAPI + Jinja2 + HTMX, icônes Lucide (sprite SVG inclus dans les pages), aucun actif externe. Connexion avec un compte de la table `users` de rôle `admin` (tout) ou `supervisor` (consultation) ; les étudiants sont refusés. Sessions dans un cookie signé (`BACKOFFICE_SECRET_KEY`, 8 h par défaut), jeton CSRF sur chaque formulaire, verrouillage temporaire après cinq échecs, compte revérifié à chaque requête (désactiver ou rétrograder un compte prend effet immédiatement). Chaque action est inscrite dans la table `admin_audit` (migration `0009`), visible sur l'accueil pour les `admin`. **Utilisateurs** : liste filtrable, fiche, création (mot de passe saisi ou généré, affiché une seule fois), rôle/niveau/quota, réinitialisation, désactivation, suppression d'un compte sans activité, **import CSV** avec prévisualisation (`identifier;level[;password;role;quota]`, adresse universitaire tronquée avant le `@`, mots de passe générés remis une seule fois) ; politique de mots de passe : 8 caractères, un chiffre, un caractère spécial. **Cours** : arborescence `data/latex`, dépôt de fichiers ou d'archives `.zip`, déplacement d'un cours entre niveaux, suppression, état de la base de connaissances (chunks par cours, diagnostic disque/base) et **ingestion en tâche de fond** (vérification, mise à jour incrémentale, reconstruction) avec progression en direct et historique des jobs (table `jobs`, migration `0010`) ; racine `data/annales` préparée pour les examens passés. L'application est servie sous `BACKOFFICE_ROOT_PATH` (`/backoffice`) en local comme derrière Caddy ; `/backoffice/healthz` (`?deep=1` pour vérifier la base) sert de sonde. Le fournisseur d'identité est une abstraction (`ela.auth`, `AUTH_PROVIDER=local`) prévue pour accueillir le CAS de l'université avec création automatique des comptes.
+`apps/backoffice/` (phase 5, l'ancien backoffice Streamlit a été retiré au lot 5.4b) : FastAPI + Jinja2 + HTMX, icônes Lucide (sprite SVG inclus dans les pages), aucun actif externe. Connexion avec un compte de la table `users` de rôle `admin` (tout) ou `supervisor` (consultation) ; les étudiants sont refusés. Sessions dans un cookie signé (`BACKOFFICE_SECRET_KEY`, 8 h par défaut), jeton CSRF sur chaque formulaire, verrouillage temporaire après cinq échecs, compte revérifié à chaque requête (désactiver ou rétrograder un compte prend effet immédiatement). Chaque action est inscrite dans la table `admin_audit` (migration `0009`), visible sur l'accueil pour les `admin`. **Utilisateurs** : liste filtrable, fiche, création (mot de passe saisi ou généré, affiché une seule fois), rôle/niveau/quota, réinitialisation, désactivation, suppression d'un compte sans activité, **import CSV** avec prévisualisation (`identifier;level[;password;role;quota]`, adresse universitaire tronquée avant le `@`, mots de passe générés remis une seule fois) ; politique de mots de passe : 8 caractères, un chiffre, un caractère spécial. **Cours** : arborescence `data/latex`, dépôt de fichiers ou d'archives `.zip`, déplacement d'un cours entre niveaux, suppression, état de la base de connaissances (chunks par cours, diagnostic disque/base) et **ingestion en tâche de fond** (vérification, mise à jour incrémentale, reconstruction) avec progression en direct et historique des jobs (table `jobs`, migration `0010`) ; racine `data/annales` préparée pour les examens passés. **Activité** (lecture seule pour `admin` et `supervisor`, période de 30 jours par défaut, raccourcis 7 / 30 / 90 jours, dates libres dans l'URL) : indicateurs, messages par jour, conversations par type (chat, quiz, exercice, fiche, code — déduit du nom du fil), classement des utilisateurs, quotas du jour ; **Pédagogie** : quiz (réussite par sujet, questions ratées), exercices, questions par cours et chapitre, hors corpus, atelier code ; **Feedbacks** : statistiques, liste filtrée (utilisateur, score) avec l'échange autour de la réponse notée ; **Conversations** : liste filtrée (utilisateur, type) et lecteur d'un fil (texte brut, étapes d'outils sur demande). Graphiques en SVG générés côté serveur (aucune bibliothèque), chaque tableau exportable en CSV (`;`, UTF-8 avec BOM) avec les filtres de la page. L'application est servie sous `BACKOFFICE_ROOT_PATH` (`/backoffice`) en local comme derrière Caddy ; `/backoffice/healthz` (`?deep=1` pour vérifier la base) sert de sonde. Le fournisseur d'identité est une abstraction (`ela.auth`, `AUTH_PROVIDER=local`) prévue pour accueillir le CAS de l'université avec création automatique des comptes.
 
 ### Évaluation
 
@@ -142,7 +140,7 @@ Deux modes, selon que le serveur a déjà un reverse proxy ou non :
 ```bash
 # Serveur avec un Caddy (ou nginx) déjà en place — cas du VPS :
 docker compose up -d --build
-#   → app sur 127.0.0.1:8000, Streamlit sur 127.0.0.1:8501, backoffice sur 127.0.0.1:8502 ; copier deploy/caddy-ela.snippet
+#   → app sur 127.0.0.1:8000, backoffice sur 127.0.0.1:8502 ; copier deploy/caddy-ela.snippet
 #     dans le Caddyfile existant (sous-domaine dédié ou chemin /ela) puis `caddy reload`.
 
 # Serveur dédié, sans reverse proxy :
@@ -150,7 +148,7 @@ docker compose --profile standalone up -d --build
 #   → le service `caddy` d'ELA prend les ports 80/443 (HTTPS automatique via SITE_ADDRESS).
 ```
 
-Services : `app` (Chainlit), `admin` (Streamlit, protégé par authentification basique dans Caddy), `backoffice` (FastAPI, `/backoffice`, connexion dans l'application), `db` (PostgreSQL 15 + pgvector), `sandbox` (exécution des scripts, réseau interne), `caddy` (profil `standalone` seulement). Compose force `DATABASE_URL` vers le service `db` : le `.env` reste identique en local et sur le serveur.
+Services : `app` (Chainlit), `backoffice` (FastAPI, `/backoffice`, connexion dans l'application, jobs d'ingestion), `db` (PostgreSQL 15 + pgvector), `sandbox` (exécution des scripts, réseau interne), `caddy` (profil `standalone` seulement). Compose force `DATABASE_URL` vers le service `db` : le `.env` reste identique en local et sur le serveur.
 
 Premier démarrage : `docker compose exec app ela-db upgrade`, `docker compose exec -it app ela-users create admin --role admin --level ALL`, puis `docker compose exec app ela-ingest` (les cours sont dans `./data/latex`, monté dans le conteneur). Les modèles (embeddings, reranker) sont téléchargés au premier lancement dans `data/` (volume), donc une seule fois.
 
@@ -195,7 +193,7 @@ Pour comparer deux configurations (par ex. les deux rerankers), lancez `ela-eval
 | Base de connaissances | PostgreSQL + pgvector (hybride vecteur + plein texte français, RRF) — ChromaDB + BM25 en repli |
 | Embeddings / rerank | `BAAI/bge-m3` (local ou API ILaaS) ; reranking optionnel (FlashRank, `BAAI/bge-reranker-v2-m3`) — désactivé par défaut, la fusion RRF suffit |
 | Base de données | PostgreSQL 15 + pgvector, SQLAlchemy (asyncpg / psycopg2), Alembic |
-| Backoffice | FastAPI + Jinja2 + HTMX (phase 5, en cours) ; Streamlit jusqu'à parité |
+| Backoffice | FastAPI + Jinja2 + HTMX, graphiques SVG côté serveur (phase 5 ; Streamlit retiré) |
 | Reverse proxy | Caddy 2 |
 
 ## Licence & contact

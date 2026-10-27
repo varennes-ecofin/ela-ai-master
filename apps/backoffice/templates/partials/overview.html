@@ -12,13 +12,13 @@
 </div>
 
 <section class="card">
-  <h2>{{ icon("message-square") }}Dernières conversations</h2>
+  <div class="card-head"><h2>{{ icon("message-square") }}Dernières conversations</h2><a class="btn btn-ghost btn-sm" href="{{ prefix }}/conversations">{{ icon("chevron-right") }}<span>Toutes</span></a></div>
   {% if overview.recent_threads %}
   <table class="table">
     <thead><tr><th>Date</th><th>Étudiant</th><th>Fil</th><th class="num">Messages</th></tr></thead>
     <tbody>
     {% for t in overview.recent_threads %}
-      <tr><td class="mono nowrap">{{ t.created_at }}</td><td>{{ t.identifier or '?' }}</td><td>{{ t.name or '(sans titre)' }}</td><td class="num">{{ t.messages }}</td></tr>
+      <tr><td class="mono nowrap">{{ t.created_at }}</td><td><a href="{{ prefix }}/users/{{ t.identifier }}">{{ t.identifier or '?' }}</a></td><td><a href="{{ prefix }}/conversations/{{ t.id }}">{{ t.name or '(sans titre)' }}</a></td><td class="num">{{ t.messages }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
