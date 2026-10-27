@@ -163,12 +163,16 @@ feedbacks, conversations) dans le backoffice FastAPI ; le lot 5.4b (`2.0.0a16`) 
 `apps/admin/`, le service `admin` du compose, l'extra `admin` du paquet et les blocs
 `/admin` de Caddy (plus d'authentification basique). Sur le VPS, dans l'ordre :
 
-1. `git pull` (les deux lots) puis `docker compose build backoffice` ;
-   `docker compose up -d --remove-orphans` : `ela-backoffice` est reconstruit, le conteneur
-   `ela-admin` (orphelin) est arrêté et supprimé ; `docker compose ps` ne liste plus `admin`.
-   Aucune migration dans ces lots (`ela-db upgrade` reste sans effet).
-2. `docker-compose.override.yml` : `cp deploy/docker-compose.override.vps.yml docker-compose.override.yml`
-   (le fichier ne mentionne plus `admin` ; sinon `docker compose config` avertit d'un service inconnu).
+1. `git pull` (les deux lots) puis, **avant toute commande compose**, remplacer la surcouche :
+   `cp deploy/docker-compose.override.vps.yml docker-compose.override.yml`. L'ancienne copie déclare
+   encore `admin:` ; comme `docker-compose.yml` ne définit plus ce service, compose refuserait tout le
+   projet (« service "admin" has neither an image nor a build context specified »).
+   `docker compose config --services` doit lister `app backoffice caddy db sandbox`.
+2. `docker compose build backoffice` puis `docker compose up -d --remove-orphans` : `ela-backoffice`
+   est reconstruit, le conteneur `ela-admin` (orphelin) est arrêté et supprimé ; `docker compose ps`
+   ne liste plus `admin`. Aucune migration dans ces lots (`ela-db upgrade` reste sans effet ; si le
+   backoffice n'avait jamais tourné sur le serveur, appliquer d'abord le § 7 : `BACKOFFICE_SECRET_KEY`
+   et migrations `0009` / `0010`).
 3. Caddy (`/opt/caddy`) : dans le bloc `{$DOMAINE_ELA}` du `Caddyfile`, supprimer le bloc `@admin`
    (avec son `basic_auth` et `reverse_proxy admin:8501`), garder `@backoffice` et le `handle` final —
    le résultat doit être identique à `deploy/caddy-ela.docker.snippet` ; puis
