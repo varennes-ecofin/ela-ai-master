@@ -30,7 +30,7 @@ jobs:
         run: |
           uv venv --clear
           uv pip install --index-url https://download.pytorch.org/whl/cpu torch
-          uv pip install -e ".[dev,admin,backoffice]" matplotlib
+          uv pip install -e ".[dev,backoffice]" matplotlib
       - name: Lint
         run: |
           uv run ruff check src apps tests
