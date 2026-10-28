@@ -294,6 +294,31 @@ async def test_jobs_table_roundtrip(db):
     await db.execute("DELETE FROM jobs WHERE started_by LIKE 'pytest_%'")
 
 
+async def test_eval_jobs_on_postgres(db):
+    """Lot 5.5a: evaluation jobs share the ``jobs`` table with the ingestion (kind ``eval``)."""
+    from ela.db import jobs
+
+    await db.execute("DELETE FROM jobs WHERE started_by LIKE 'pytest_%'")
+    actor = f"pytest_{uuid.uuid4().hex[:6]}"
+    ingest = await asyncio.to_thread(jobs.create_sync, jobs.KIND_INGEST, mode="dry_run", target=None, started_by=actor)
+    await asyncio.to_thread(jobs.finish_sync, ingest, status="success", result={"total": 1})
+    job_id = await asyncio.to_thread(
+        jobs.create_sync, jobs.KIND_EVAL, mode="answer", target="agent-v2", started_by=actor
+    )
+    assert (await jobs.active_job()).id == job_id  # one job at a time, whatever its kind
+    await asyncio.to_thread(jobs.start_sync, job_id)
+    await asyncio.to_thread(jobs.append_log_sync, job_id, "[12/71] UTS-12\n", progress=16, step="[12/71] UTS-12")
+    result = {"report": "20261027-120000-agent-v2-answer.json", "kind": "answer", "metrics": {"fidelity_mean": 0.86}}
+    await asyncio.to_thread(jobs.finish_sync, job_id, status="success", result=result)
+    job = await jobs.get_job(job_id)
+    assert job.kind == "eval" and job.mode == "answer" and job.target == "agent-v2" and job.result == result
+    assert (await jobs.last_finished(jobs.KIND_EVAL)).id == job_id
+    assert (await jobs.last_finished(jobs.KIND_INGEST)).id == ingest
+    evals = await jobs.list_jobs(limit=10, kind=jobs.KIND_EVAL)
+    assert [j.id for j in evals if j.started_by == actor] == [job_id]
+    await db.execute("DELETE FROM jobs WHERE started_by LIKE 'pytest_%'")
+
+
 def test_knowledge_base_on_pgvector(tmp_path):
     """Ingest the fixture corpus with the hash embedding, then read it back through ``state``."""
     from sqlalchemy import create_engine, text

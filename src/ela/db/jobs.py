@@ -1,4 +1,4 @@
-"""Background jobs (table ``jobs``): ingestion runs launched from the backoffice.
+"""Background jobs (table ``jobs``): ingestion and evaluation runs launched from the backoffice.
 
 Reads are async (pages). Writes come from the runner thread and use the
 sync engine, so that progress and log lines land in the database while the
@@ -27,6 +27,7 @@ INTERRUPTED = "interrupted"
 ACTIVE = (QUEUED, RUNNING)
 
 KIND_INGEST = "ingest"
+KIND_EVAL = "eval"
 MAX_LOG_CHARS = 400_000
 
 

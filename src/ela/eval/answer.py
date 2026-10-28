@@ -57,7 +57,7 @@ class RunResult:
         n_tool_calls: Tool invocations (0 for the fixed pipeline).
         n_searches: Course searches performed.
         sources: Labels of the passages handed to the model.
-        source_files: ``source`` metadata of those passages (legacy citation check).
+        source_files: ``source`` metadata of those passages (``[Source: file]`` citation check).
         known_ids: Identifiers (``S1``...) handed to the model (agent citation check).
         steps: Human-readable description of each step (for the report).
         error: Error message when the run failed.
@@ -87,46 +87,6 @@ class AnswerRunner(Protocol):
     async def run(self, question: EvalQuestion) -> RunResult:
         """Answer ``question`` and describe the run."""
         ...
-
-
-class LegacyEngineRunner:
-    """Run the frozen Phase-2 pipeline (``retrieve → grade → answer``) for the baseline.
-
-    See :mod:`ela.eval.legacy_pipeline`.
-    """
-
-    def __init__(self, pipeline_factory: Callable[[str], object] | None = None) -> None:
-        self._factory = pipeline_factory or self._default_factory
-
-    @staticmethod
-    def _default_factory(level: str):
-        from ela.eval.legacy_pipeline import LegacyPipeline
-
-        return LegacyPipeline(level)
-
-    async def run(self, question: EvalQuestion) -> RunResult:
-        """Answer ``question`` with a fresh pipeline of the question's level."""
-        pipeline = self._factory(question.level)
-        start = time.perf_counter()
-        error = None
-        answer = ""
-        try:
-            answer = await pipeline.answer(question.question)
-        except Exception as exc:
-            error = str(exc)
-        latency = time.perf_counter() - start
-        docs = list(getattr(pipeline, "last_docs", []) or [])
-        return RunResult(
-            answer=answer,
-            latency_s=latency,
-            n_model_calls=None,
-            n_tool_calls=0,
-            n_searches=1 if docs else 0,
-            sources=[_doc_label(d) for d in docs],
-            source_files=[str((d.metadata or {}).get("source", "")) for d in docs],
-            steps=["retrieve_and_grade", "answer"],
-            error=error,
-        )
 
 
 class AgentEngineRunner:
@@ -175,13 +135,6 @@ class AgentEngineRunner:
             steps=steps,
             error=error,
         )
-
-
-def _doc_label(doc) -> str:
-    meta = doc.metadata or {}
-    where = " › ".join(p for p in (meta.get("chapter"), meta.get("section"), meta.get("slide_title")) if p)
-    src = meta.get("source", "Inconnu")
-    return f"{src} — {where}" if where else str(src)
 
 
 def looks_like_refusal(answer: str) -> bool:

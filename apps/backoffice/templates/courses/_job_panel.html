@@ -3,7 +3,7 @@
 <div class="job-live" hx-get="{{ prefix }}/courses/partials/job" hx-trigger="every 2s" hx-swap="outerHTML">
   <div class="job-head">
     <span class="pill pill-info">en cours</span>
-    <strong>{{ active_job.target or labels.get(active_job.mode, active_job.mode) or active_job.kind }}</strong>
+    <strong>{% if active_job.kind == 'eval' %}{{ labels.get(active_job.mode, active_job.mode) }}{% if active_job.target %} · {{ active_job.target }}{% endif %}{% else %}{{ active_job.target or labels.get(active_job.mode, active_job.mode) or active_job.kind }}{% endif %}</strong>
     <span class="muted">lancé par {{ active_job.started_by }}{% if active_job.started_at %} à {{ active_job.started_at | dt('%H:%M:%S') }}{% endif %}</span>
     <a href="{{ prefix }}/jobs/{{ active_job.id }}">journal complet</a>
   </div>

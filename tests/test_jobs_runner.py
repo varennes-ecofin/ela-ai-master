@@ -143,3 +143,133 @@ def test_pump_flushes_in_batches(memory, monkeypatch):
     assert memory.rows[1]["log"].count("\n") >= 4
     assert json.loads(json.dumps(memory.rows[1]["result"]))["parsed"] == 10
     time.sleep(0)  # keep the import of time meaningful for linters
+
+
+# --- lot 5.5 : evaluation jobs -------------------------------------------------------------
+
+FAKE_EVAL_CHILD = textwrap.dedent(
+    """
+    import json, os, sys
+    kind, result_path = sys.argv[1], sys.argv[2]
+    n = 4
+    print(f"{n} questions, juge fixe")
+    for i in range(1, n + 1):
+        print(f"[{i}/{n}] Q-{i:02d}   0.50s  recherches=1  fidélité=1.00")
+    env = {k: os.environ.get(k) for k in ("LLM_MODEL_CHAT", "LLM_PROVIDER", "EVAL_JUDGE_MODEL",
+                                           "EVAL_JUDGE_PROVIDER", "LLM_MODEL_FALLBACK")}
+    json.dump({"report": f"20261027-120000-test-{kind}.json", "kind": kind, "label": "test",
+               "n_questions": n, "n_errors": 0, "metrics": {"fidelity_mean": 0.9}, "env": env},
+              open(result_path, "w"))
+    print("Rapport : eval/reports/x.json")
+    """
+)
+
+
+def fake_eval_factory(script):
+    def factory(options, result_path):
+        return [sys.executable, "-I", "-u", "-X", "utf8", str(script), options.kind, result_path]
+
+    return factory
+
+
+@pytest.fixture
+def eval_script(tmp_path):
+    script = tmp_path / "fake_eval.py"
+    script.write_text(FAKE_EVAL_CHILD, encoding="utf-8")
+    return script
+
+
+def test_eval_command_and_options():
+    from ela.jobs.runner import EvalOptions, eval_command
+
+    opts = EvalOptions(kind="answer", label="agent", course="UTS", qtype="multi-hop", limit=20, judge=False)
+    cmd = eval_command(opts, "/tmp/r.json")
+    assert cmd[:5] == [sys.executable, "-I", "-u", "-X", "utf8"] and cmd[5:8] == ["-m", "ela.eval.runner", "answer"]
+    assert "--label" in cmd and "agent" in cmd and "--course" in cmd and "UTS" in cmd
+    assert "--type" in cmd and "multi-hop" in cmd and "--limit" in cmd and "20" in cmd
+    assert "--no-judge" in cmd and "--k" not in cmd and cmd[-2:] == ["--result", "/tmp/r.json"]
+    ret = eval_command(EvalOptions(kind="retrieval", label="x", k=10), "/r")
+    assert "--k" in ret and "10" in ret and "--no-judge" not in ret and "--limit" not in ret
+    with pytest.raises(ValueError):
+        eval_command(EvalOptions(kind="weird", label="x"), "/r")
+    # no override: empty environment; override: model, pinned judge, fallback disabled
+    assert opts.environment() == {} and not opts.overrides_model
+    over = EvalOptions(
+        kind="answer",
+        label="q",
+        model="qwen-3.8-27b",
+        provider="ilaas",
+        judge_model="gpt-oss-120b",
+        judge_provider="cerebras",
+    )
+    assert over.environment() == {
+        "LLM_MODEL_CHAT": "qwen-3.8-27b",
+        "LLM_PROVIDER": "ilaas",
+        "EVAL_JUDGE_MODEL": "gpt-oss-120b",
+        "EVAL_JUDGE_PROVIDER": "cerebras",
+        "LLM_MODEL_FALLBACK": "none",
+    }
+    assert over.summary() == {
+        "kind": "answer",
+        "label": "q",
+        "judge": True,
+        "model": "qwen-3.8-27b",
+        "provider": "ilaas",
+    }
+    assert EvalOptions(kind="retrieval", label="r", k=7, limit=3).summary() == {
+        "kind": "retrieval",
+        "label": "r",
+        "limit": 3,
+        "k": 7,
+    }
+
+
+def test_runner_eval_job_progress_result_and_environment(memory, eval_script, monkeypatch):
+    from ela.jobs.runner import EvalOptions
+
+    monkeypatch.setenv("LLM_MODEL_CHAT", "server-model")
+    monkeypatch.delenv("LLM_MODEL_FALLBACK", raising=False)
+    r = JobRunner("/data/latex", eval_command_factory=fake_eval_factory(eval_script))
+    opts = EvalOptions(
+        kind="answer",
+        label="test",
+        model="other-model",
+        provider="ilaas",
+        judge_model="judge-m",
+        judge_provider="cerebras",
+    )
+    job_id = r.start_eval(opts, started_by="admin")
+    assert r.busy and r.current_kind == jobs_db.KIND_EVAL
+    with pytest.raises(JobBusyError):
+        r.start_ingest("dry_run", started_by="admin")
+    r.wait(20)
+    row = memory.rows[job_id]
+    assert row["kind"] == "eval" and row["mode"] == "answer" and row["target"] == "test"
+    assert row["status"] == "success" and row["progress"] == 100 and "[4/4] Q-04" in row["log"]
+    assert row["result"]["report"] == "20261027-120000-test-answer.json" and row["result"]["metrics"] == {
+        "fidelity_mean": 0.9
+    }
+    assert row["result"]["env"] == {
+        "LLM_MODEL_CHAT": "other-model",
+        "LLM_PROVIDER": "ilaas",
+        "EVAL_JUDGE_MODEL": "judge-m",
+        "EVAL_JUDGE_PROVIDER": "cerebras",
+        "LLM_MODEL_FALLBACK": "none",
+    }
+    assert "env: EVAL_JUDGE_MODEL=judge-m" in row["log"] and "LLM_MODEL_FALLBACK=none" in row["log"]
+    assert r.current_kind is None
+    # without override the child inherits the server's environment untouched
+    job2 = r.start_eval(EvalOptions(kind="retrieval", label="plain"), started_by="admin")
+    r.wait(20)
+    env = memory.rows[job2]["result"]["env"]
+    assert env["LLM_MODEL_CHAT"] == "server-model" and env["LLM_MODEL_FALLBACK"] is None
+    assert "env:" not in memory.rows[job2]["log"]
+    with pytest.raises(ValueError):
+        r.start_eval(EvalOptions(kind="weird", label="x"), started_by="admin")
+
+
+def test_parse_progress_formats():
+    assert JobRunner.parse_progress("   🧠 5/10 chunks vectorisés (99.0/s)") == 50
+    assert JobRunner.parse_progress("[12/71] UTS-12   0.5s") == 16
+    assert JobRunner.parse_progress("[71/71] NCE-05") == 100
+    assert JobRunner.parse_progress("[0/0] x") is None and JobRunner.parse_progress("hello") is None

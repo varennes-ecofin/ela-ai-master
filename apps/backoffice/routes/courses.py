@@ -245,7 +245,9 @@ async def course_move(
     """Move the course to another level; for courses, start the incremental ingestion that re-indexes it."""
     runner = request.app.state.jobs
     if root == "latex" and (runner.busy or await jobs_db.active_job()):
-        return _error_page(request, "Une ingestion est en cours : attendez sa fin avant de déplacer un cours.", 409)
+        return _error_page(
+            request, "Un job est en cours (ingestion ou évaluation) : attendez sa fin avant de déplacer un cours.", 409
+        )
     try:
         catalog.move_course(_root(request, root), level, name, to_level)
     except catalog.CatalogError as exc:
@@ -304,11 +306,11 @@ async def ingest_start(request: Request, mode: str = Form(default=""), session: 
     if mode not in MODES:
         return _error_page(request, "Mode d'ingestion inconnu.")
     if await jobs_db.active_job():
-        return _error_page(request, "Une ingestion est déjà en cours.", 409)
+        return _error_page(request, "Un job est déjà en cours (ingestion ou évaluation).", 409)
     try:
         job_id = request.app.state.jobs.start_ingest(mode, started_by=session.identifier)
     except JobBusyError:
-        return _error_page(request, "Une ingestion est déjà en cours.", 409)
+        return _error_page(request, "Un job est déjà en cours (ingestion ou évaluation).", 409)
     await audit.record(
         audit.INGEST_START, session.identifier, target=str(job_id), ip=client_ip(request), details={"mode": mode}
     )

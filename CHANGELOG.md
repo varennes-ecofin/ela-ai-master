@@ -3,6 +3,23 @@
 Toutes les évolutions notables du projet. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 Le plan de modernisation complet est dans `PLAN_MODERNISATION.md`.
 
+## [2.0.0a17] — 2026-10-28 — Phase 5, lot 5.5a : évaluation depuis le backoffice
+
+### Ajouté
+- **Backoffice → Évaluation** (onglet activé) : **lancement** d'une évaluation `retrieval` (hit@k, MRR, sans appel LLM) ou `answer` (réponses de l'agent : latence, recherches, citations, fidélité par juge LLM) en **tâche de fond** — formulaire réservé à `admin` (étiquette, cours, type de question, limite — 20 par défaut, vide = toutes —, `k`, juge activé par défaut) avec estimation du nombre d'appels LLM (`2 × N` avec juge, `N` sans) et confirmation avant lancement ; le job réutilise `JobRunner` / table `jobs` (`kind = eval`, un seul job à la fois, ingestion ou évaluation), processus enfant `python -I -u -X utf8 -m ela.eval.runner answer|retrieval … --result`, progression `[i/n]` en direct (fragment HTMX 2 s), page du job avec le rapport et ses métriques clés ; audit `eval.start`.
+- **Choix du modèle évalué** (fournisseur + modèle, champ libre avec suggestions) passé au processus enfant par `LLM_MODEL_CHAT` / `LLM_PROVIDER` : seuls les fournisseurs dont la clé est présente sur le serveur sont proposés ; le **juge reste fixe** (`EVAL_JUDGE_MODEL` / nouveau `EVAL_JUDGE_PROVIDER`, résolus depuis les réglages du serveur) et le modèle de secours est désactivé pendant l'évaluation d'un autre modèle ; modèle et fournisseur enregistrés dans le rapport (`model`, `provider`, `judge_model`, `judge_provider`, `prompt_version`, `kind`, aussi pour `retrieval`).
+- **Historique des rapports** `eval/reports/*.json` (source unique, partagée avec la ligne de commande) : date, étiquette, type, modèle, questions, métriques clés, nombre de questions à regarder, filtre par type ; **page d'un rapport** (métriques, tableau par cours, tableau par question avec les échecs en tête — non trouvée, erreur, citation fantôme, fidélité < 0,5, refus indu — et le détail dépliable : question, réponse, sources, verdict du juge point par point), export CSV du tableau, téléchargement du JSON, suppression (`admin`, audit `eval.delete`) ; `supervisor` en lecture seule.
+- **Comparaison** de deux rapports de même type (`/backoffice/evaluation/compare`) : tableau avant / après avec delta coloré selon le sens de la métrique, questions gagnées / perdues (`retrieval`), fidélité en hausse / en baisse (`answer`), questions présentes dans un seul rapport ; même logique en ligne de commande (`ela.eval.compare`, `ela-eval compare`).
+- `ela.eval.reports` (index des rapports, noms de fichiers validés, cache par mtime, fichiers illisibles signalés) ; `ela.eval.compare` ; `ela-eval retrieval` accepte `--type`, `--limit` et `--result` ; `ela-eval answer` accepte `--result` ; réglages `EVAL_JUDGE_PROVIDER`, `EVAL_DATASET`, `EVAL_REPORTS_DIR`.
+- `docker-compose.yml` : volume `./eval:/app/eval` (jeu de questions et rapports) et réseau `sandbox_net` sur `backoffice` (préparation de `ela-eval code`) ; `eval/reports/.gitkeep` ; `docs/DEPLOIEMENT_VPS.md` § 10.
+- Tests : comparaison et index (8), runner `ela-eval` sans modèle (8), jobs d'évaluation (3), pages Évaluation hors ligne (10), job `eval` sur PostgreSQL (1).
+
+### Supprimé
+- `ela-eval answer --engine legacy` et `src/ela/eval/legacy_pipeline.py` (chaîne fixe de la Phase 2, gelée pour la mesure « avant » faite le 18/10), `LegacyEngineRunner`, les constantes de prompt qui ne servaient qu'à elle ; `verify_legacy_citations` (format `[Source: fichier]`) reste dans `ela.agent.citations`.
+
+### Modifié
+- Messages « Une ingestion est déjà en cours » → « Un job est déjà en cours (ingestion ou évaluation) » ; historique des jobs commun aux ingestions et aux évaluations.
+
 ## [2.0.0a16] — 2026-10-27 — Phase 5, lot 5.4b : retrait du backoffice Streamlit
 
 ### Supprimé

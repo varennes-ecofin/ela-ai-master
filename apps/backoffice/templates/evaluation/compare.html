@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% set active = 'evaluation' %}
+{% block title %}Comparer deux rapports{% endblock %}
+{% block content %}
+{% call page_head("Comparer deux rapports", "Tableau avant / après de deux rapports de même type, questions gagnées et perdues.", "chart-column") %}
+  <a class="btn btn-ghost" href="{{ prefix }}/evaluation">{{ icon("chevron-right", "flip") }}<span>Évaluation</span></a>
+{% endcall %}
+
+<section class="card">
+  {% if reports | length < 2 %}
+  {{ empty("Il faut au moins deux rapports pour comparer.", "chart-column") }}
+  {% else %}
+  <form method="get" action="{{ prefix }}/evaluation/compare" class="filters">
+    <label class="filter"><span class="filter-label">Avant</span>
+      <select name="a">{% for r in reports %}<option value="{{ r.name }}" {% if a == r.name %}selected{% endif %}>{{ r.timestamp | dt('%d/%m %H:%M') if r.timestamp }} · {{ r.label }} · {{ kind_labels.get(r.kind, r.kind) }}{% if r.model %} · {{ r.model }}{% endif %}</option>{% endfor %}</select></label>
+    <label class="filter"><span class="filter-label">Après</span>
+      <select name="b">{% for r in reports %}<option value="{{ r.name }}" {% if b == r.name %}selected{% endif %}>{{ r.timestamp | dt('%d/%m %H:%M') if r.timestamp }} · {{ r.label }} · {{ kind_labels.get(r.kind, r.kind) }}{% if r.model %} · {{ r.model }}{% endif %}</option>{% endfor %}</select></label>
+    <button type="submit" class="btn btn-primary filter-btn">{{ icon("chart-column") }}<span>Comparer</span></button>
+  </form>
+  {% endif %}
+  {% if error %}<p class="error">{{ icon("circle-alert") }}<span>{{ error }}</span></p>{% endif %}
+</section>
+
+{% if comparison %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon("chart-column") }}{{ kind_labels.get(comparison.kind, comparison.kind) }} : « {{ comparison.label_before }} » → « {{ comparison.label_after }} »</h2>
+    <span class="links-row"><a class="btn btn-ghost btn-sm" href="{{ prefix }}/evaluation/reports/{{ a }}">{{ icon("file-text") }}<span>avant</span></a><a class="btn btn-ghost btn-sm" href="{{ prefix }}/evaluation/reports/{{ b }}">{{ icon("file-text") }}<span>après</span></a></span>
+  </div>
+  <table class="table table-compact">
+    <thead><tr><th>Métrique</th><th class="num">{{ comparison.label_before }}</th><th class="num">{{ comparison.label_after }}</th><th class="num">Δ</th></tr></thead>
+    <tbody>
+    {% for row in comparison.rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td class="num mono">{% if row.before is none %}—{% else %}{{ '%.3f' % row.before }}{% endif %}</td>
+        <td class="num mono">{% if row.after is none %}—{% else %}{{ '%.3f' % row.after }}{% endif %}</td>
+        <td class="num mono delta delta-{{ row.trend }}">{% if row.delta is none %}—{% else %}{{ '%+.3f' % row.delta }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Δ en vert : amélioration (selon le sens de la métrique) ; en orange : dégradation.</p>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>{{ icon("circle-check") }}{{ comparison.change_labels[0] }} <span class="muted">({{ comparison.gained | length }})</span></h2>
+    {% if comparison.gained %}<p class="mono">{{ comparison.gained | join(', ') }}</p>{% else %}<p class="muted">Aucune.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>{{ icon("triangle-alert") }}{{ comparison.change_labels[1] }} <span class="muted">({{ comparison.lost | length }})</span></h2>
+    {% if comparison.lost %}<p class="mono">{{ comparison.lost | join(', ') }}</p>{% else %}<p class="muted">Aucune.</p>{% endif %}
+  </section>
+</div>
+{% if comparison.only_before or comparison.only_after %}
+<section class="card">
+  <h2>{{ icon("info") }}Questions présentes dans un seul rapport</h2>
+  {% if comparison.only_before %}<p><span class="muted">Seulement dans « {{ comparison.label_before }} » :</span> <span class="mono">{{ comparison.only_before | join(', ') }}</span></p>{% endif %}
+  {% if comparison.only_after %}<p><span class="muted">Seulement dans « {{ comparison.label_after }} » :</span> <span class="mono">{{ comparison.only_after | join(', ') }}</span></p>{% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

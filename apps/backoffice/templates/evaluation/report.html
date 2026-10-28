@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% from "_filters.html" import csv_link with context %}
+{% set active = 'evaluation' %}
+{% block title %}Rapport {{ report.label }}{% endblock %}
+{% macro num(value, digits=3) -%}
+{% if value is none %}—{% elif value is boolean %}{{ 'oui' if value else 'non' }}{% elif value is integer %}{{ value }}{% elif value is number %}{{ ('%.' ~ digits ~ 'f') % value }}{% else %}{{ value }}{% endif %}
+{%- endmacro %}
+{% block content %}
+{% call page_head("Rapport « " ~ report.label ~ " »", kind_label ~ " · " ~ ((summary.timestamp | dt('%d/%m/%Y %H:%M')) if summary and summary.timestamp else (report.timestamp or '')) ~ (" · " ~ report.model ~ " (" ~ report.provider ~ ")" if report.model else "") ~ (" · prompt " ~ report.prompt_version if report.prompt_version else "") ~ (" · juge " ~ report.judge_model if report.judge_model else ""), "flask-conical") %}
+  <a class="btn btn-ghost" href="{{ prefix }}/evaluation">{{ icon("chevron-right", "flip") }}<span>Évaluation</span></a>
+  {% if others %}<a class="btn btn-ghost" href="{{ prefix }}/evaluation/compare?a={{ others[0].name }}&b={{ name }}">{{ icon("chart-column") }}<span>Comparer</span></a>{% endif %}
+  <a class="btn btn-ghost" href="{{ prefix }}/evaluation/reports/{{ name }}/download">{{ icon("download") }}<span>JSON</span></a>
+  {% if session.is_admin %}
+  <form method="post" action="{{ prefix }}/evaluation/reports/{{ name }}/delete" class="inline" onsubmit="return confirm('Supprimer définitivement ce rapport ?');">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-danger">{{ icon("trash-2") }}<span>Supprimer</span></button>
+  </form>
+  {% endif %}
+{% endcall %}
+
+{% if flash %}<p class="notice">{{ icon("circle-check") }}<span>{{ flash }}</span></p>{% endif %}
+
+<div class="kpis kpis-4">
+  <div class="kpi">{{ icon("list-checks", "kpi-icon") }}<span class="kpi-value">{{ report.n_questions or rows | length }}</span><span class="kpi-label">Questions</span></div>
+  {% for key, lab, value in summary.headline if summary %}
+  <div class="kpi"><span class="kpi-value">{{ num(value) }}</span><span class="kpi-label">{{ lab }}</span></div>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+<section class="card">
+  <h2>{{ icon("chart-column") }}Métriques</h2>
+  <table class="table table-compact">
+    <tbody>
+    {% for label, value in metric_rows %}<tr><td>{{ label }}</td><td class="num mono">{{ num(value) }}</td></tr>{% endfor %}
+    {% if kind == 'retrieval' %}<tr><td>k</td><td class="num mono">{{ report.k }}</td></tr>{% endif %}
+    {% if report.metrics and report.metrics.fidelity_judged_n is defined %}<tr><td>questions jugées</td><td class="num mono">{{ report.metrics.fidelity_judged_n }}</td></tr>{% endif %}
+    {% if report.metrics and report.metrics.n_errors is defined %}<tr><td>erreurs</td><td class="num mono">{{ report.metrics.n_errors }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+  <dl class="dl dl-inline">
+    <dt>Fichier</dt><dd class="mono">{{ name }}</dd>
+    <dt>Jeu de questions</dt><dd>version {{ report.dataset_version or '?' }}</dd>
+    {% if report.judge_model %}<dt>Juge</dt><dd>{{ report.judge_model }}{% if report.judge_provider %} ({{ report.judge_provider }}){% endif %}</dd>{% endif %}
+  </dl>
+</section>
+
+<section class="card">
+  <h2>{{ icon("book-open") }}Par cours</h2>
+  {% if by_course %}
+  <table class="table table-compact">
+    <thead><tr><th>Cours</th><th class="num">Questions</th>
+      {% if kind == 'retrieval' %}<th class="num">any-hit</th><th class="num">hit@k</th>
+      {% elif kind == 'code' %}<th class="num">exécution OK</th><th class="num">corrections</th>
+      {% else %}<th class="num">fidélité</th><th class="num">latence (s)</th><th class="num">fantômes</th>{% endif %}
+    </tr></thead>
+    <tbody>
+    {% for course, v in by_course %}
+      <tr><td>{{ course }}</td><td class="num">{{ v.questions }}</td>
+      {% if kind == 'retrieval' %}<td class="num mono">{{ num(v.any_hit_rate, 2) }}</td><td class="num mono">{{ num((v.found / v.expected) if v.expected else none, 2) }}</td>
+      {% elif kind == 'code' %}<td class="num mono">{{ num(v.run_ok_rate, 2) }}</td><td class="num mono">{{ num(v.fixes_mean, 2) }}</td>
+      {% else %}<td class="num mono">{{ num(v.fidelity_mean, 2) }}</td><td class="num mono">{{ num(v.latency_median_s, 2) }}</td><td class="num">{{ v.phantom }}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Pas de détail par cours.", "book-open") }}{% endif %}
+</section>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("list-checks") }}Par question <span class="muted">· {{ n_flagged }} à regarder</span></h2>
+    {{ csv_link(prefix ~ "/evaluation/reports/" ~ name ~ "/questions.csv") }}
+  </div>
+  {% if rows %}
+  <table class="table">
+    <thead><tr>
+      <th>Id</th><th>Cours</th><th>Type</th>
+      {% if kind == 'retrieval' %}<th class="num">Trouvées</th><th class="num">Rang</th><th class="num">Pool</th><th class="num">Latence</th>
+      {% elif kind == 'code' %}<th>Généré</th><th>Syntaxe</th><th>Exécution</th><th class="num">Corr.</th><th>Sortie</th><th>Figure</th><th>Termes</th>
+      {% else %}<th class="num">Latence</th><th class="num">Rech.</th><th class="num">Fidélité</th><th>Citations</th><th>Comportement</th>{% endif %}
+      <th>À regarder</th>
+    </tr></thead>
+    <tbody>
+    {% for q in rows %}
+      <tr class="{% if q.flag %}row-flagged{% endif %}">
+        <td class="mono nowrap">{{ q.id }}</td>
+        <td>{{ q.course }}</td><td class="muted">{{ q.type }}</td>
+        {% if kind == 'retrieval' %}
+          <td class="num">{{ q.found }}/{{ q.expected }}</td><td class="num">{{ q.first_rank or '—' }}</td><td class="num">{{ q.candidate_rank or '—' }}</td><td class="num mono">{{ num(q.latency_s, 2) }}</td>
+        {% elif kind == 'code' %}
+          <td>{{ num(q.generated) }}</td><td>{{ num(q.syntax_ok) }}</td><td>{{ num(q.run_ok) }}</td><td class="num">{{ q.n_fixes }}</td><td>{{ num(q.has_output) }}</td><td>{{ num(q.has_figure) }}</td><td>{{ num(q.terms_found) }}</td>
+        {% else %}
+          <td class="num mono">{{ num(q.latency_s, 2) }}</td><td class="num">{{ q.n_searches }}</td><td class="num mono">{{ num(q.fidelity, 2) }}</td>
+          <td class="mono">{{ q.citations_valid | length }} ok{% if q.citations_invalid %} · <span class="text-warn">{{ q.citations_invalid | length }} fantôme(s)</span>{% endif %}</td>
+          <td class="muted">{% if q.refused %}refus{% elif q.general_knowledge %}connaissances générales{% else %}réponse{% endif %} <span class="muted">(attendu : {{ q.expected_behavior }})</span></td>
+        {% endif %}
+        <td>{% if q.flag %}<span class="pill pill-warn">{{ q.flag }}</span>{% endif %}</td>
+      </tr>
+      <tr class="q-detail {% if q.flag %}row-flagged{% endif %}"><td colspan="13"><details class="q-details"><summary>détail</summary>
+          <div class="q-body">
+            {% if q.question %}<p class="q-question">{{ q.question }}</p>{% endif %}
+            {% if kind == 'retrieval' %}
+              <p class="muted">Extraits renvoyés :</p>
+              <ol class="list">{% for d in q.retrieved %}<li class="mono">{{ d.source }}{% if d.slide_title %} — {{ d.slide_title }}{% endif %}</li>{% endfor %}</ol>
+            {% elif kind == 'code' %}
+              {% if q.code %}<pre class="msg">{{ q.code }}</pre>{% endif %}
+              {% if q.stdout %}<p class="muted">Sortie :</p><pre class="msg">{{ q.stdout[:3000] }}</pre>{% endif %}
+              {% if q.stderr %}<p class="muted">Erreur :</p><pre class="msg msg-error">{{ q.stderr[:3000] }}</pre>{% endif %}
+            {% else %}
+              {% if q.error %}<p class="error">{{ icon("circle-alert") }}<span>{{ q.error }}</span></p>{% endif %}
+              {% if q.answer %}<pre class="msg msg-assistant">{{ q.answer }}</pre>{% endif %}
+              {% if q.steps %}<p class="muted">Étapes : {{ q.steps | join(' · ') }}</p>{% endif %}
+              {% if q.sources %}<p class="muted">Sources : {{ q.sources | join(' · ') }}</p>{% endif %}
+              {% if q.judgment %}
+                <p class="muted">Juge : {{ q.judgment.comment }}</p>
+                <ul class="list">{% for p in q.judgment.points %}<li>{% if p.covered %}{{ icon("circle-check") }}{% else %}{{ icon("x") }}{% endif %} {{ p.point }}{% if p.evidence %} <span class="muted">— « {{ p.evidence }} »</span>{% endif %}</li>{% endfor %}</ul>
+              {% endif %}
+            {% endif %}
+          </div>
+        </details></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}{{ empty("Aucune question dans ce rapport.", "list-checks") }}{% endif %}
+</section>
+{% endblock %}

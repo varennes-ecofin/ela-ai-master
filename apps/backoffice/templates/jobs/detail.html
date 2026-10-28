@@ -1,11 +1,15 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, page_head with context %}
-{% set active = 'courses' %}
+{% set active = 'evaluation' if job.kind == 'eval' else 'courses' %}
 {% block title %}Job #{{ job.id }}{% endblock %}
 {% block content %}
-{% call page_head("Job #" ~ job.id, labels.get(job.mode, job.mode) if job.mode else job.kind) %}
+{% call page_head("Job #" ~ job.id, (labels.get(job.mode, job.mode) if job.mode else job.kind) ~ (" · " ~ job.target if job.kind == 'eval' and job.target else "")) %}
   <a class="btn btn-ghost" href="{{ prefix }}/jobs">{{ icon("clock") }}<span>Historique</span></a>
+  {% if job.kind == 'eval' %}
+  <a class="btn btn-ghost" href="{{ prefix }}/evaluation">{{ icon("flask-conical") }}<span>Évaluation</span></a>
+  {% else %}
   <a class="btn btn-ghost" href="{{ prefix }}/courses">{{ icon("book-open") }}<span>Cours</span></a>
+  {% endif %}
 {% endcall %}
 <section class="card">
   {% include "jobs/_status.html" %}

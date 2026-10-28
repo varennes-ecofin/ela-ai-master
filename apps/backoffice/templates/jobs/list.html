@@ -3,8 +3,9 @@
 {% set active = 'courses' %}
 {% block title %}Jobs{% endblock %}
 {% block content %}
-{% call page_head("Historique des jobs", "Ingestions lancées depuis le backoffice.") %}
+{% call page_head("Historique des jobs", "Ingestions et évaluations lancées depuis le backoffice.") %}
   <a class="btn btn-ghost" href="{{ prefix }}/courses">{{ icon("book-open") }}<span>Cours</span></a>
+  <a class="btn btn-ghost" href="{{ prefix }}/evaluation">{{ icon("flask-conical") }}<span>Évaluation</span></a>
 {% endcall %}
 <section class="card">
   {% if jobs %}
@@ -14,12 +15,12 @@
     {% for j in jobs %}
       <tr>
         <td class="num"><a href="{{ prefix }}/jobs/{{ j.id }}">{{ j.id }}</a></td>
-        <td>{{ j.target or labels.get(j.mode, j.mode) or j.kind }}</td>
+        <td>{% if j.kind == 'eval' %}{{ labels.get(j.mode, j.mode) }}{% if j.target %} · {{ j.target }}{% endif %}{% else %}{{ j.target or labels.get(j.mode, j.mode) or j.kind }}{% endif %}</td>
         <td>{% if j.status == 'success' %}<span class="pill pill-ok">réussi</span>{% elif j.status == 'failed' %}<span class="pill pill-warn">échoué</span>{% elif j.active %}<span class="pill pill-info">{{ j.status }}</span>{% else %}<span class="pill pill-off">{{ j.status }}</span>{% endif %}</td>
         <td>{{ j.started_by }}</td>
         <td class="mono muted">{{ j.started_at | dt if j.started_at else (j.created_at | dt) }}</td>
         <td class="num">{% if j.duration_seconds is not none %}{{ '%d' % j.duration_seconds }} s{% else %}—{% endif %}</td>
-        <td class="muted">{% if j.status == 'success' and j.result.dry_run %}{{ j.result.parsed }} chunks analysés (vérification){% elif j.status == 'success' and j.result.total is defined %}{{ j.result.added }} vectorisés, {{ j.result.removed }} supprimés, {{ j.result.total }} en base{% elif j.error %}{{ j.error }}{% endif %}</td>
+        <td class="muted">{% if j.status == 'success' and j.kind == 'eval' %}{% if j.result.report %}<a href="{{ prefix }}/evaluation/reports/{{ j.result.report }}">rapport</a>{% endif %}{% for key, value in (j.result.metrics or {}).items() %}{% if loop.index <= 3 %} · {{ key }} {% if value is none %}—{% elif value is integer %}{{ value }}{% elif value is number %}{{ '%.3f' % value }}{% else %}{{ value }}{% endif %}{% endif %}{% endfor %}{% elif j.status == 'success' and j.result.dry_run %}{{ j.result.parsed }} chunks analysés (vérification){% elif j.status == 'success' and j.result.total is defined %}{{ j.result.added }} vectorisés, {{ j.result.removed }} supprimés, {{ j.result.total }} en base{% elif j.error %}{{ j.error }}{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

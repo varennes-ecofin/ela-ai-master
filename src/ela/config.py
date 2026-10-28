@@ -298,10 +298,22 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     eval_judge_model: str | None = Field(
         default=None,
-        description="Model used as LLM judge by `ela-eval answer` (defaults to LLM_MODEL_CHAT on LLM_PROVIDER).",
+        description="Model used as LLM judge by `ela-eval answer` (defaults to LLM_MODEL_CHAT).",
+    )
+    eval_judge_provider: ProviderName | None = Field(
+        default=None,
+        description="Provider of the judge model (defaults to LLM_PROVIDER). Kept fixed when the backoffice "
+        "evaluates another model so that fidelities stay comparable.",
     )
     eval_judge_reasoning_effort: ReasoningEffort = Field(
         default="medium", description="Reasoning effort of the judge (accuracy matters more than latency here)."
+    )
+    eval_dataset: str = Field(
+        default="eval/questions.yaml", description="Reference question set (relative to the working directory)."
+    )
+    eval_reports_dir: str = Field(
+        default="eval/reports",
+        description="Where `ela-eval` writes its JSON reports; listed by the backoffice (shared volume in Docker).",
     )
 
     # ------------------------------------------------------------------

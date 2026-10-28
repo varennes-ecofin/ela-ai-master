@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, empty with context %}
+{% set active = 'evaluation' %}
+{% block title %}Évaluation{% endblock %}
+{% block content %}
+{% call page_head("Évaluation du RAG", "Mesurer le retriever et les réponses de l'agent sur le jeu de questions, conserver les rapports, comparer deux mesures.", "flask-conical") %}
+  <a class="btn btn-ghost" href="{{ prefix }}/evaluation/compare">{{ icon("chart-column") }}<span>Comparer</span></a>
+  <a class="btn btn-ghost" href="{{ prefix }}/jobs">{{ icon("clock") }}<span>Historique des jobs</span></a>
+{% endcall %}
+
+{% if flash %}<p class="notice">{{ icon("circle-check") }}<span>{{ flash }}</span></p>{% endif %}
+
+<section class="card">
+  <h2>{{ icon("play") }}Lancer une évaluation</h2>
+  {% include "evaluation/_launch.html" %}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ icon("file-text") }}{{ reports | length }} rapport(s)</h2>
+    <div class="tabs" role="tablist" aria-label="Type">
+      <a class="tab {% if not kind_filter %}active{% endif %}" href="{{ prefix }}/evaluation">Tous</a>
+      {% for k, lab in kind_labels.items() %}{% if k != 'code' or kind_filter == 'code' %}<a class="tab {% if kind_filter == k %}active{% endif %}" href="{{ prefix }}/evaluation?kind={{ k }}">{{ lab }}</a>{% endif %}{% endfor %}
+    </div>
+  </div>
+  {% if reports %}
+  <table class="table">
+    <thead><tr><th>Date</th><th>Étiquette</th><th>Type</th><th>Modèle</th><th class="num">Questions</th><th>Métriques clés</th><th class="num">À regarder</th><th></th></tr></thead>
+    <tbody>
+    {% for r in reports %}
+      <tr class="{% if not r.valid %}row-error{% endif %}">
+        <td class="mono muted nowrap">{% if r.timestamp %}{{ r.timestamp | dt('%d/%m/%Y %H:%M') }}{% endif %}</td>
+        <td>{% if r.valid %}<a href="{{ prefix }}/evaluation/reports/{{ r.name }}"><strong>{{ r.label }}</strong></a>{% else %}<strong>{{ r.label }}</strong> <span class="pill pill-warn">illisible</span>{% endif %}</td>
+        <td><span class="pill pill-eval">{{ kind_labels.get(r.kind, r.kind) }}</span></td>
+        <td class="mono muted">{{ r.model or '—' }}{% if r.provider %} <span class="muted">({{ r.provider }})</span>{% endif %}</td>
+        <td class="num">{{ r.n_questions }}</td>
+        <td class="metrics-cell">{% for key, lab, value in r.headline %}<span class="metric"><span class="muted">{{ lab }}</span> <strong>{% if value is none %}—{% elif value is number and value is not integer %}{{ '%.3f' % value }}{% else %}{{ value }}{% endif %}</strong></span>{% endfor %}</td>
+        <td class="num">{% if r.n_failures %}<span class="pill pill-warn">{{ r.n_failures }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+        <td class="nowrap links-row">
+          <a class="btn btn-ghost btn-sm" href="{{ prefix }}/evaluation/reports/{{ r.name }}/download" title="Télécharger le JSON">{{ icon("download") }}</a>
+          {% if session.is_admin %}
+          <form method="post" action="{{ prefix }}/evaluation/reports/{{ r.name }}/delete" class="inline" onsubmit="return confirm('Supprimer définitivement le rapport « {{ r.label }} » ?');">
+            <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-ghost btn-sm danger" title="Supprimer">{{ icon("trash-2") }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Les rapports sont les fichiers <code>{{ reports_dir }}/*.json</code> écrits par <code>ela-eval</code> (ligne de commande ou backoffice). Ils contiennent les questions du jeu de test et les sorties du modèle, jamais de données étudiantes.</p>
+  {% else %}
+  {{ empty("Aucun rapport pour l'instant : lancez une évaluation ci-dessus ou `ela-eval` en ligne de commande.", "file-text") }}
+  {% endif %}
+</section>
+{% endblock %}

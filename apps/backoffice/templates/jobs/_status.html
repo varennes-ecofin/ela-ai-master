@@ -6,7 +6,7 @@
     {% elif job.status == 'success' %}<span class="pill pill-ok">réussi</span>
     {% elif job.status == 'failed' %}<span class="pill pill-warn">échoué</span>
     {% else %}<span class="pill pill-off">{{ job.status }}</span>{% endif %}
-    <strong>{{ job.target or labels.get(job.mode, job.mode) or job.kind }}</strong>
+    <strong>{% if job.kind == 'eval' %}{{ labels.get(job.mode, job.mode) }}{% if job.target %} · {{ job.target }}{% endif %}{% else %}{{ job.target or labels.get(job.mode, job.mode) or job.kind }}{% endif %}</strong>
     <span class="muted">lancé par {{ job.started_by }}{% if job.started_at %}, {{ job.started_at | dt('%d/%m %H:%M:%S') }}{% endif %}{% if job.duration_seconds is not none %} · {{ '%d' % job.duration_seconds }} s{% endif %}</span>
   </div>
   {% if job.active %}
@@ -14,7 +14,14 @@
   <p class="muted mono job-step">{{ job.step or '…' }}</p>
   {% endif %}
   {% if job.error %}<p class="error">{{ icon("circle-alert") }}<span>{{ job.error }}</span></p>{% endif %}
-  {% if job.status == 'success' and job.result %}
+  {% if job.status == 'success' and job.kind == 'eval' and job.result %}
+  <dl class="dl job-result">
+    <dt>Rapport</dt><dd>{% if job.result.report %}<a href="{{ prefix }}/evaluation/reports/{{ job.result.report }}">{{ job.result.report }}</a>{% else %}—{% endif %}</dd>
+    <dt>Questions</dt><dd>{{ job.result.n_questions }}{% if job.result.n_errors %} ({{ job.result.n_errors }} erreur(s)){% endif %}</dd>
+    {% if job.result.model %}<dt>Modèle</dt><dd>{{ job.result.model }}{% if job.result.provider %} ({{ job.result.provider }}){% endif %}</dd>{% endif %}
+    {% for key, value in (job.result.metrics or {}).items() %}<dt class="mono">{{ key }}</dt><dd class="mono">{% if value is none %}—{% elif value is integer %}{{ value }}{% elif value is number %}{{ '%.3f' % value }}{% else %}{{ value }}{% endif %}</dd>{% endfor %}
+  </dl>
+  {% elif job.status == 'success' and job.result %}
   <dl class="dl job-result">
     {% if job.result.dry_run %}<dt>Mode</dt><dd>vérification seule (rien d'écrit)</dd>{% endif %}
     <dt>Chunks analysés</dt><dd>{{ job.result.parsed }}</dd>

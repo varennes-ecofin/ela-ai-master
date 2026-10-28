@@ -1,9 +1,8 @@
-"""Legacy prompts of ELA (French).
+"""Shared prompt pieces of ELA (French).
 
 The agent's prompts are versioned Markdown files in ``ela/agent/prompts/``.
-This module keeps the level supplements (shared with the agent), the code
-workshop prompt and the Phase-2 answer prompt used by the evaluation
-baseline (``ela.eval.legacy_pipeline``).
+This module keeps the base instructions, the level supplements (shared
+with the agent) and the code workshop prompt.
 """
 
 from __future__ import annotations
@@ -62,24 +61,6 @@ LEVEL_PROMPT_SUPPLEMENT = {
         "Privilégie la rigueur formelle et les subtilités théoriques."
     ),
 }
-
-SOURCE_INSTRUCTION_RELEVANT = (
-    "INSTRUCTION CRITIQUE : Les documents ci-dessous contiennent "
-    "des informations pertinentes pour répondre. Tu DOIS baser ta "
-    "réponse sur ces documents et citer [Source: NomFichier]. "
-    "N'utilise PAS tes connaissances générales si le cours couvre le sujet."
-)
-
-SOURCE_INSTRUCTION_FALLBACK = (
-    "NOTE : Les documents récupérés ne semblent pas directement "
-    "pertinents pour cette question. Tu peux utiliser tes connaissances "
-    "spécialisées (séries temporelles, économétrie financière) en "
-    "taguant [Source: Connaissances Générales]."
-)
-
-REFUSAL_MESSAGE = (
-    "Je suis spécialisé en **Séries Temporelles** et **Économétrie Financière**. Ce sujet sort du cadre du cours."
-)
 
 
 def level_instructions(user_level: str) -> str:

@@ -26,7 +26,7 @@
     <a href="{{ prefix }}/users" class="{% if active == 'users' %}active{% endif %}">{{ icon("users") }}<span>Utilisateurs</span></a>
     <a href="{{ prefix }}/courses" class="{% if active == 'courses' %}active{% endif %}">{{ icon("book-open") }}<span>Cours</span></a>
     <a href="{{ prefix }}/activity" class="{% if active == 'activity' %}active{% endif %}">{{ icon("activity") }}<span>Activité</span></a>
-    <span class="nav-soon" title="Lot 5.5 — à venir">{{ icon("flask-conical") }}<span>Évaluation</span></span>
+    <a href="{{ prefix }}/evaluation" class="{% if active == 'evaluation' %}active{% endif %}">{{ icon("flask-conical") }}<span>Évaluation</span></a>
   </nav>
   <div class="who">
     <a class="who-name" href="{{ prefix }}/account/password" title="Changer mon mot de passe">{{ icon("user-round") }}{{ session.identifier }}</a>

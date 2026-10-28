@@ -18,6 +18,7 @@ services:
     networks:
       - default
       - proxy
+      - sandbox_net   # lot 5.5 : `ela-eval code` joint le bac à sable (comme app)
 
 networks:
   proxy:

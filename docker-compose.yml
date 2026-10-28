@@ -95,7 +95,9 @@ services:
       - no-new-privileges:true
 
   # --- Backoffice (FastAPI + HTMX, phase 5) — servi par Caddy sous /backoffice ---
-  # Sessions signées (BACKOFFICE_SECRET_KEY dans le .env) ; exécute aussi les jobs d'ingestion.
+  # Sessions signées (BACKOFFICE_SECRET_KEY dans le .env) ; exécute aussi les jobs d'ingestion
+  # et d'évaluation (lot 5.5 : `ela-eval` en processus enfant, rapports dans ./eval/reports,
+  # accès au bac à sable via sandbox_net pour `ela-eval code`, même SANDBOX_URL que `app`).
   backoffice:
     build:
       context: .
@@ -115,6 +117,12 @@ services:
       - LOG_JSON=true
     volumes:
       - ./data:/app/data
+      # eval/ : jeu de questions (questions.yaml) et rapports JSON (reports/, hors git) ;
+      # le dossier doit appartenir à l'uid 1000 (utilisateur `ela` du conteneur)
+      - ./eval:/app/eval
+    networks:
+      - default
+      - sandbox_net
 
 networks:
   default:

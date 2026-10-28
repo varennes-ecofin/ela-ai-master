@@ -1,8 +1,8 @@
 # ELA AI — Plan de modernisation (v2)
 
-> **Version** : 2.2 — 2026-10-27
+> **Version** : 2.3 — 2026-10-28
 > **Auteur** : Gilles de Truchis, avec assistance Claude
-> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : lots 5.1 (socle), 5.2 (utilisateurs) et 5.3 (cours, ingestion) validés · **lots 5.4a (activité, pédagogie, feedbacks, conversations) et 5.4b (retrait de Streamlit) livrés le 27/10, à tester** · puis 5.5 → 5.6, « Annales », CAS, Phase 6
+> **Statut** : Phases 0 à 4 validées (jalon J4, 19/10) · **Consolidation faite le 21/10** : dépôt `main` à jour avec CI verte, nouvelle pile déployée sur le VPS (`https://ela.varennes-vps.com`, Caddy Docker sur réseau `proxy`, base migrée, sandbox actif) · **Phase 5 cadrée le 21/10** (décisions ci-dessous) : lots 5.1 (socle), 5.2 (utilisateurs) et 5.3 (cours, ingestion) validés · lots 5.4a (activité, pédagogie, feedbacks, conversations) et 5.4b (retrait de Streamlit) validés et déployés sur le VPS le 27/10 (**jalon J5**, Streamlit retiré) · **lot 5.5a (évaluation depuis le backoffice) livré le 28/10, à tester** · puis 5.5b (`ela-eval code`) → 5.6 Exploitation → 5.7 Configuration des modèles → « Annales » → CAS → Phase 6
 > **Périmètre** : refonte architecture + passage à un RAG agentique + nouvelles fonctionnalités étudiant
 
 ---
@@ -19,6 +19,18 @@
 | Cibles de déploiement | VPS (démo, 3–4 utilisateurs) → serveurs université (30–60 utilisateurs) → ILaaS |
 | Git | dépôt GitHub existant, non synchronisé ; remise en place d'un flux `commit → push` sur branche `modernisation` |
 | Mode de travail | Claude code et teste dans son environnement, écrit ensuite les fichiers dans `E:\ELA AI`, et fournit les commandes à lancer sous VS Code |
+
+### Décisions du 27/10/2026 (lots 5.5 et 5.7)
+
+| Sujet | Décision |
+|---|---|
+| Rapports d'évaluation | Fichiers `eval/reports/*.json`, source unique de la ligne de commande et du backoffice (pas de table en base) ; `./eval` monté dans le conteneur `backoffice`, inscriptible par l'uid 1000 ; hors git (taille, pas confidentialité : questions du jeu et sorties du modèle, jamais de données étudiantes) |
+| Modèle évalué | Choisi dans le formulaire (fournisseur parmi ceux dont la clé est sur le serveur, modèle en champ libre), passé au processus enfant par `LLM_MODEL_CHAT` / `LLM_PROVIDER` ; **juge fixe** (`EVAL_JUDGE_MODEL` / `EVAL_JUDGE_PROVIDER`), jamais le modèle testé, pour des fidélités comparables ; modèle de secours désactivé pendant l'évaluation ; modèle et fournisseur enregistrés dans le rapport |
+| Juge et limite par défaut | Juge activé et limite 20 dans le formulaire, estimation `2 × N` appels LLM (N sans juge) et confirmation avant lancement ; limite vide = mesure complète |
+| `--engine legacy` | Supprimé avec `legacy_pipeline.py` (mesure « avant » faite le 18/10) ; `verify_legacy_citations` conservée |
+| Comparaison | Deux rapports de même type (tableau avant / après, gagnées / perdues) ; courbe d'évolution reportée (utile avec plusieurs rapports accumulés) |
+| `ela-eval code` (5.5b) | Jeu `eval/code.yaml` séparé (≈ 20 sujets, 2–4 par cours), Python seulement, termes attendus vérifiés mécaniquement sans juge, déroulé identique à l'Atelier (génération → syntaxe/correction → bac à sable → une correction automatique au plus), rapport `kind: "code"` comparable ; sujets rédigés depuis les `.tex`, validés par l'enseignant |
+| Configuration des modèles (5.7) | En production, modèles et fournisseurs changent (modèle retiré, passage à ILaaS) et le `.env` du serveur est trop lourd : l'administrateur les règle depuis le backoffice (table `settings` chiffrée, voir lot 5.7) ; pas de rôle `superadmin` (un seul administrateur de configuration pour l'instant) |
 
 ### Décisions confirmées le 06/10/2026
 
@@ -252,10 +264,17 @@ Lots (chacun livré testé) :
 3. ✅ **5.3 Cours et ingestion** (livré le 26/10, version `2.0.0a14`) : arborescence `data/latex`, dépôt de fichiers ou de `.zip`, suppression, **déplacement d'un cours entre niveaux** (renommage + ré-indexation automatique), état de la base (chunks par cours, diagnostic disque/base), ingestion en tâche de fond dans un processus enfant (table `jobs`, migration `0010`, progression HTMX, historique), racine `data/annales` préparée. Décisions du 26/10 : `.tex/.sty/.cls/.bib` + zip ; un job à la fois ; Streamlit conservé jusqu'au 5.4.
 4. ✅ **5.4a Activité, pédagogie, feedbacks, conversations** (livré le 27/10, version `2.0.0a15`) : parité avec les vues Streamlit en lecture seule pour `admin` et `supervisor` — onglet Activité (indicateurs, messages par jour, conversations par type, classement, quotas), Pédagogie (quiz, exercices, questions, hors corpus, code), Feedbacks (statistiques, liste paginée, contexte de la réponse), Conversations (liste, lecteur en texte brut avec étapes d'outils) ; période commune (30 jours par défaut, raccourcis 7/30/90, dates dans l'URL), export CSV de chaque tableau, graphiques **SVG générés côté serveur** (décision du 27/10 : pas de Chart.js). Cinq types de fils déduits du nom (chat, quiz, exercice, fiche, code). Markdown dans le lecteur reporté.
    ✅ **5.4b Retrait de Streamlit** (livré le 27/10, version `2.0.0a16`) : `apps/admin/`, extra `admin`, service `admin` du compose, blocs `/admin` de Caddy et authentification basique, `ela-hash --caddy`, CI, `.env.example`, docs (`DEPLOIEMENT_VPS.md` § 9 : procédure sur le VPS). Jalon **J5** atteint côté code ; déploiement du backoffice sur le VPS à faire par Gilles.
-5. **5.5 Évaluation** : `ela-eval answer` / `retrieval` depuis l'interface (job), historique des rapports, comparaison ; `ela-eval code` (évaluation de l'Atelier Code pour comparer les modèles).
+5. ✅ **5.5a Évaluation depuis le backoffice** (livré le 28/10, version `2.0.0a17`, à tester) : onglet Évaluation — lancement de `ela-eval retrieval` / `answer` en tâche de fond (`JobRunner`, `kind = eval`, un seul job à la fois, progression `[i/n]`), formulaire `admin` (étiquette, cours, type, limite 20 par défaut, `k`, juge, **modèle et fournisseur évalués** avec juge fixe et secours désactivé, estimation des appels LLM), historique des rapports `eval/reports/*.json` (métriques clés, filtre par type), page d'un rapport (par cours, par question avec les échecs en tête, détail des réponses et du juge, CSV, JSON, suppression), comparaison de deux rapports de même type (`ela.eval.compare`, partagé avec la CLI) ; `--engine legacy` et `legacy_pipeline.py` supprimés ; `EVAL_JUDGE_PROVIDER`, `EVAL_DATASET`, `EVAL_REPORTS_DIR` ; volume `./eval` et `sandbox_net` sur `backoffice`.
+   **5.5b `ela-eval code`** : évaluation de l'Atelier Code pour comparer les modèles — jeu `eval/code.yaml`, génération → syntaxe/correction → bac à sable → une correction au plus, métriques (script généré, syntaxe, exécution du premier coup et après correction, corrections, sortie chiffrée, figure, termes attendus, latences, délais), rapport `kind: "code"` comparable, type `code` dans le formulaire et la comparaison.
 6. **5.6 Exploitation** : sauvegardes PostgreSQL automatisées, healthchecks exposés, journal applicatif consultable, documentation.
-7. **Annales** (décidé le 26/10, après le 5.4) : ingestion des sujets d'examen et corrigés LaTeX de `data/annales/{M1|M2}/<Cours>/` en chunks `exam` (énoncé + corrigé), tenus à l'écart des recherches de cours ; `generate_exercise` et `check_step` s'appuient sur de vrais exercices et corrigés ; PDF/Word des collègues en seconde étape (énoncés seulement, formules dégradées à l'extraction).
-8. Ensuite : fournisseur **CAS** (`AUTH_PROVIDER=cas`) + provisioning automatique côté Chainlit et backoffice.
+7. **5.7 Configuration des modèles depuis le backoffice** (décidé le 27/10) : en production, les modèles et les fournisseurs changent (modèle retiré chez un fournisseur, passage à ILaaS) et passer par le `.env` du serveur est trop lourd ; l'administrateur doit pouvoir le faire depuis le backoffice.
+   - **Stockage** : table `settings` (clé, valeur, modifié par, date ; migration dédiée) avec audit de chaque changement ; les clés API y sont chiffrées (Fernet) avec une clé maîtresse qui reste dans le `.env` (`ELA_MASTER_KEY`, ou dérivée de `BACKOFFICE_SECRET_KEY`). Le `.env` reste la source des réglages d'infrastructure (base, secrets maîtres) et fournit les valeurs par défaut ; les valeurs en base les surchargent. Une clé enregistrée n'est jamais réaffichée (seulement « définie, se termine par … »).
+   - **Périmètre réglable à chaud** : fournisseur principal (`cerebras` / `ilaas` / `groq`), URL de base, clé API par fournisseur, modèles chat / vision / secours, juge d'évaluation (modèle et fournisseur), effort de raisonnement. Exclus : embeddings et backend de retrieval (changer le modèle d'embeddings impose une ré-ingestion complète — reste dans le `.env`, avec une mention dans la page).
+   - **Prise en compte sans redémarrage** : compteur de version en base ; `get_settings()` / `ela.llm` lisent les surcharges et reconstruisent les clients LLM quand la version change (contrôle toutes les 30 s ou au début de chaque session de chat) ; le backoffice et ses jobs enfants lisent la même source. Les surcharges par l'environnement d'un processus enfant introduites en 5.5a (`LLM_MODEL_CHAT` / `LLM_PROVIDER` pour l'évaluation) en sont la première brique.
+   - **Sécurité d'exploitation** : bouton « Tester la connexion » (un appel minimal au modèle) obligatoire avant d'enregistrer un fournisseur ou un modèle ; historique des valeurs précédentes et retour arrière en un clic ; page réservée au rôle `admin` (pas de rôle `superadmin`, décision du 27/10 : un seul administrateur de configuration pour l'instant).
+   - **Tests** : chiffrement/déchiffrement, précédence `.env` < base, rechargement des clients sur changement de version (FakeDb), page et audit hors ligne, table `settings` sur PostgreSQL.
+8. **Annales** (décidé le 26/10, après 5.7) : ingestion des sujets d'examen et corrigés LaTeX de `data/annales/{M1|M2}/<Cours>/` en chunks `exam` (énoncé + corrigé), tenus à l'écart des recherches de cours ; `generate_exercise` et `check_step` s'appuient sur de vrais exercices et corrigés ; PDF/Word des collègues en seconde étape (énoncés seulement, formules dégradées à l'extraction).
+9. Ensuite : fournisseur **CAS** (`AUTH_PROVIDER=cas`) + provisioning automatique côté Chainlit et backoffice.
 
 ### Phase 6 — Préparation production université / ILaaS (2 sessions, le moment venu)
 
@@ -273,7 +292,7 @@ Phase 0 ──► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4 
 
 Variante « résultat visible vite » : 0 → 2 (embeddings/reranker uniquement) → 3 → 1 → 4 → 5.
 
-Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** (fin P2) ajout d'un cours en direct + rapport d'évaluation avant/après ; **J3** (fin P3) agent avec étapes et sources visibles — livré le 17/10 ; **J4** (fin P4) parcours étudiant complet — validé le 19/10 ; **J5** (fin P5) backoffice FastAPI à parité, Streamlit retiré.
+Jalons démontrables : **J1** (fin P0) ELA répond à nouveau en HTTPS ; **J2** (fin P2) ajout d'un cours en direct + rapport d'évaluation avant/après ; **J3** (fin P3) agent avec étapes et sources visibles — livré le 17/10 ; **J4** (fin P4) parcours étudiant complet — validé le 19/10 ; **J5** (fin P5, atteint le 27/10) backoffice FastAPI à parité, Streamlit retiré ; ordre des lots restants : 5.5b → 5.6 → 5.7 → Annales → CAS → Phase 6.
 
 ---
 

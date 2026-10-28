@@ -1,0 +1,146 @@
+{% from "_macros.html" import icon with context %}
+{#- Lot 5.5 — launch panel: the running job (polled) or, when idle, the launch form (admin). -#}
+{% if active_job %}
+<div id="eval-launch" class="job-live" hx-get="{{ prefix }}/evaluation/partials/launch" hx-trigger="every 2s" hx-swap="outerHTML">
+  <div class="job-head">
+    <span class="pill pill-info">en cours</span>
+    <strong>{{ labels.get(active_job.mode, active_job.mode) or active_job.kind }}{% if active_job.kind == 'eval' and active_job.target %} · {{ active_job.target }}{% endif %}</strong>
+    <span class="muted">lancé par {{ active_job.started_by }}{% if active_job.started_at %} à {{ active_job.started_at | dt('%H:%M:%S') }}{% endif %}</span>
+    <a href="{{ prefix }}/jobs/{{ active_job.id }}">journal complet</a>
+  </div>
+  <div class="progress"><div class="progress-bar" style="width: {{ active_job.progress }}%"></div></div>
+  <p class="muted mono job-step">{{ active_job.step or '…' }}</p>
+  {% if active_job.kind != 'eval' %}<p class="hint">Une ingestion occupe l'exécuteur : l'évaluation pourra être lancée à sa fin.</p>{% endif %}
+</div>
+{% else %}
+<div id="eval-launch" class="job-live">
+  {% if session.is_admin %}
+  {% if facts.error %}
+  <p class="error">{{ icon("circle-alert") }}<span>Jeu de questions illisible : {{ facts.error }}</span></p>
+  {% elif not reports_writable %}
+  <p class="error">{{ icon("circle-alert") }}<span>Le dossier des rapports ({{ reports_dir }}) n'est pas inscriptible par le serveur : vérifiez le volume et son propriétaire (uid 1000 dans Docker).</span></p>
+  {% else %}
+  {% if form_error %}<p class="error">{{ icon("circle-alert") }}<span>{{ form_error }}</span></p>{% endif %}
+  <form method="post" action="{{ prefix }}/evaluation/start" class="eval-form" id="eval-form" autocomplete="off"
+        data-counts='{{ facts.counts | tojson }}' data-retrieval-counts='{{ facts.retrieval_counts | tojson }}'>
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf_token }}">
+    <div class="grid-3">
+      <div>
+        <label for="eval-kind">Évaluation</label>
+        <select id="eval-kind" name="kind">
+          {% for k, lab in kinds %}<option value="{{ k }}" {% if (form.kind or 'answer') == k %}selected{% endif %}>{{ lab }}</option>{% endfor %}
+        </select>
+        <p class="hint" data-kind-hint="answer">Réponses de l'agent : latence, recherches, citations, fidélité (juge LLM).</p>
+        <p class="hint" data-kind-hint="retrieval">hit@k / MRR du retriever, sans appel LLM.</p>
+      </div>
+      <div>
+        <label for="eval-label">Étiquette</label>
+        <input id="eval-label" type="text" name="label" value="{{ form.label or '' }}" required maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,39}" placeholder="ex. agent-v2" spellcheck="false">
+        <p class="hint">Nom du rapport (lettres, chiffres, « . », « _ », « - »).</p>
+      </div>
+      <div>
+        <label for="eval-limit">Limite</label>
+        <input id="eval-limit" type="number" name="limit" min="0" max="1000" value="{{ form.limit if form.limit is defined else default_limit }}" placeholder="toutes">
+        <p class="hint">N premières questions ; vide = toutes ({{ facts.total }}).</p>
+      </div>
+      <div>
+        <label for="eval-course">Cours</label>
+        <select id="eval-course" name="course">
+          <option value="">Tous</option>
+          {% for c in facts.courses %}<option value="{{ c }}" {% if form.course == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="eval-type">Type de question</label>
+        <select id="eval-type" name="type">
+          <option value="">Tous</option>
+          {% for t in types %}<option value="{{ t }}" {% if form.type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div data-kind-only="retrieval">
+        <label for="eval-k">k (top-k)</label>
+        <input id="eval-k" type="number" name="k" min="1" max="50" value="{{ form.k or 5 }}">
+      </div>
+      <div data-kind-only="answer">
+        <label class="check"><input type="checkbox" name="judge" value="1" {% if form.judge is not defined or form.judge %}checked{% endif %}> Juge LLM (fidélité aux points attendus)</label>
+        <p class="hint">Juge fixe : {{ judge_model }} ({{ judge_provider }}), quel que soit le modèle évalué.</p>
+      </div>
+    </div>
+    <fieldset class="fieldset">
+      <legend>Modèle évalué</legend>
+      <div class="grid-2">
+        <div>
+          <label for="eval-provider">Fournisseur</label>
+          <select id="eval-provider" name="provider">
+            <option value="">Celui du serveur ({{ server_provider }})</option>
+            {% for name, lab in providers %}<option value="{{ name }}" {% if form.provider == name %}selected{% endif %}>{{ lab }}</option>{% endfor %}
+          </select>
+          <p class="hint">Seuls les fournisseurs dont la clé est présente sur le serveur sont proposés.</p>
+        </div>
+        <div>
+          <label for="eval-model">Modèle</label>
+          <input id="eval-model" type="text" name="model" list="eval-models" value="{{ form.model or '' }}" maxlength="80" placeholder="{{ server_model }} (serveur)" spellcheck="false">
+          <datalist id="eval-models">{% for m in model_suggestions %}<option value="{{ m }}">{% endfor %}</datalist>
+          <p class="hint">Vide = modèle du serveur. Modèle et fournisseur sont enregistrés dans le rapport ; le modèle de secours est désactivé pendant l'évaluation d'un autre modèle.</p>
+        </div>
+      </div>
+    </fieldset>
+    <div class="form-actions">
+      <span class="muted" id="eval-estimate"></span>
+      <button type="submit" class="btn btn-primary">{{ icon("play") }}<span>Lancer l'évaluation</span></button>
+    </div>
+  </form>
+  <script>
+  (function () {
+    var form = document.getElementById("eval-form");
+    if (!form) { return; }
+    var counts = JSON.parse(form.dataset.counts || "{}");
+    var retrievalCounts = JSON.parse(form.dataset.retrievalCounts || "{}");
+    var kind = form.querySelector("#eval-kind");
+    function selected() {
+      var course = form.querySelector("#eval-course").value, type = form.querySelector("#eval-type").value;
+      var table = kind.value === "retrieval" ? retrievalCounts : counts, n = 0;
+      Object.keys(table).forEach(function (key) {
+        var parts = key.split("|");
+        if ((!course || parts[0] === course) && (!type || parts[1] === type)) { n += table[key]; }
+      });
+      var limit = parseInt(form.querySelector("#eval-limit").value, 10);
+      if (!isNaN(limit) && limit > 0 && limit < n) { n = limit; }
+      return n;
+    }
+    function calls(n) {
+      if (kind.value !== "answer") { return 0; }
+      return form.querySelector("input[name=judge]").checked ? 2 * n : n;
+    }
+    function refresh() {
+      form.querySelectorAll("[data-kind-only]").forEach(function (el) { el.hidden = el.dataset.kindOnly !== kind.value; });
+      form.querySelectorAll("[data-kind-hint]").forEach(function (el) { el.hidden = el.dataset.kindHint !== kind.value; });
+      var n = selected(), c = calls(n), out = document.getElementById("eval-estimate");
+      out.textContent = n + " question(s)" + (kind.value === "answer" ? " ≈ " + c + " appel(s) LLM" : ", sans appel LLM");
+    }
+    form.addEventListener("change", refresh);
+    form.addEventListener("input", refresh);
+    form.addEventListener("submit", function (ev) {
+      if (kind.value !== "answer") { return; }
+      var n = selected(), c = calls(n);
+      if (!window.confirm(n + " question(s) seront posées à l'agent : environ " + c + " appel(s) LLM" +
+          (form.querySelector("input[name=judge]").checked ? " (réponses + juge)" : "") + ", plus les recherches. Lancer ?")) {
+        ev.preventDefault();
+      }
+    });
+    refresh();
+  })();
+  </script>
+  {% endif %}
+  {% else %}
+  <p class="muted">Le lancement d'une évaluation est réservé aux administrateurs.</p>
+  {% endif %}
+  {% if last_eval %}
+  <p class="muted job-last">
+    Dernière évaluation : <a href="{{ prefix }}/jobs/{{ last_eval.id }}">#{{ last_eval.id }}</a> —
+    {% if last_eval.status == 'success' %}<span class="pill pill-ok">réussie</span>{% elif last_eval.status == 'failed' %}<span class="pill pill-warn">échouée</span>{% else %}<span class="pill pill-off">{{ last_eval.status }}</span>{% endif %}
+    {{ labels.get(last_eval.mode, last_eval.mode) }}{% if last_eval.target %} · {{ last_eval.target }}{% endif %}, {{ last_eval.finished_at | dt }}{% if last_eval.result.report %} · <a href="{{ prefix }}/evaluation/reports/{{ last_eval.result.report }}">rapport</a>{% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endif %}

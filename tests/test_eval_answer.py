@@ -7,7 +7,7 @@ import json
 from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 
-from ela.eval.answer import AgentEngineRunner, LegacyEngineRunner, RunResult, evaluate_answers, summarize
+from ela.eval.answer import AgentEngineRunner, RunResult, evaluate_answers, summarize
 from ela.eval.dataset import EvalQuestion
 from ela.eval.judge import Judgment, expected_behavior, judge_answer
 
@@ -106,18 +106,14 @@ def test_summarize_empty():
     assert m["n"] == 0 and m["latency_median_s"] is None and m["citation_valid_rate"] is None
 
 
-async def test_legacy_runner_collects_docs_and_legacy_citations():
-    class FakePipeline:
-        def __init__(self):
-            self.last_docs = []
-
-        async def answer(self, question):
-            self.last_docs = [Document(page_content="x", metadata={"source": "UTS.tex", "slide_title": "ACF"})]
-            return "Réponse [Source: UTS.tex]. Autre [Source: MTS.tex]."
-
-    runner = LegacyEngineRunner(pipeline_factory=lambda level: FakePipeline())
-    result = await runner.run(_q("A"))
-    assert result.n_searches == 1 and result.sources == ["UTS.tex — ACF"]
+def test_run_result_checks_legacy_citations_without_ids():
+    """A ``[Source: file]`` answer without ``S1`` identifiers is checked against the source files."""
+    result = RunResult(
+        answer="Réponse [Source: UTS.tex]. Autre [Source: MTS.tex].",
+        latency_s=0.1,
+        n_searches=1,
+        source_files=["UTS.tex"],
+    )
     check = result.citation_check()
     assert check.valid == ["UTS.tex"] and check.invalid == ["MTS.tex"]
 

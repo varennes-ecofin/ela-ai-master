@@ -188,3 +188,47 @@ feedbacks, conversations) dans le backoffice FastAPI ; le lot 5.4b (`2.0.0a16`) 
 
 Retour arrière : `git checkout 2.0.0a15` (ou le commit du lot 5.4a) remet `apps/admin/` et le service
 `admin` ; `docker compose up -d --build admin` puis rétablir le bloc `@admin` dans Caddy.
+
+## 10. Lot 5.5a : évaluation depuis le backoffice
+
+Le lot 5.5a (`2.0.0a17`) ajoute l'onglet **Évaluation** : `ela-eval retrieval` / `answer` lancés
+en tâche de fond par le conteneur `backoffice`, rapports JSON dans `eval/reports/`, comparaison.
+Aucune migration. Le service `backoffice` monte désormais `./eval` (jeu de questions et rapports)
+et rejoint `sandbox_net` (préparation de `ela-eval code`, lot 5.5b). Sur le VPS, dans l'ordre :
+
+1. `git pull` puis, **avant toute commande compose**, remplacer la surcouche (elle ajoute
+   `sandbox_net` au service `backoffice`) :
+   `cp deploy/docker-compose.override.vps.yml docker-compose.override.yml` ;
+   `docker compose config --services` doit toujours lister `app backoffice caddy db sandbox`.
+2. Le dossier `eval/` doit être lisible et `eval/reports/` **inscriptible par l'uid 1000**
+   (utilisateur `ela` du conteneur). Vérifier :
+   ```bash
+   id -u                      # attendu : 1000 (utilisateur debian)
+   mkdir -p eval/reports && ls -ln eval   # les lignes doivent montrer 1000 1000
+   ```
+   Si l'uid affiché n'est pas 1000 : `sudo chown -R 1000:1000 eval`. (`eval/questions.yaml` est
+   versionné, `eval/reports/*.json` ne l'est pas ; les rapports contiennent les questions du jeu et
+   les sorties du modèle, jamais de données étudiantes.)
+3. `docker compose build backoffice && docker compose up -d backoffice` : attendu
+   `Container ela-backoffice  Started` puis, après ~30 s, `docker compose ps` → `ela-backoffice`
+   `healthy`. Le conteneur doit voir les deux réseaux :
+   `docker inspect ela-backoffice --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'`
+   → `ela-ai-master_default ela-ai-master_sandbox_net proxy`.
+4. `.env` du serveur (facultatif) : `EVAL_JUDGE_MODEL` / `EVAL_JUDGE_PROVIDER` fixent le juge
+   (vides = modèle et fournisseur du chat). Les clés `CEREBRAS_API_KEY`, `ILAAS_API_KEY` (+
+   `ILAAS_CHAT_BASE_URL`), `GROQ_API_KEY` présentes déterminent les fournisseurs proposés dans le
+   formulaire. Après modification : `docker compose up -d backoffice` (relecture du `.env`).
+5. Vérification : `https://<site>/backoffice/evaluation` avec le compte `admin` → formulaire visible,
+   « Juge fixe : … » affiché, fournisseurs proposés ; lancer **Évaluation du retrieval**
+   (étiquette `vps-retrieval`, sans appel LLM, ~1 min) : la page du job montre `[i/71] …` puis
+   « réussi » avec le lien du rapport ; `ls -l eval/reports/` sur le serveur liste le fichier
+   (propriétaire 1000). Lancer ensuite **Évaluation des réponses** avec la limite 20 et le juge
+   (≈ 40 appels LLM) ; comparer avec un rapport précédent (`Comparer`). Avec le compte
+   `supervisor` : rapports lisibles, pas de formulaire ni de bouton Supprimer.
+6. En ligne de commande sur le serveur, utiliser le conteneur `backoffice`, qui monte `./eval` (le
+   service `app` ne le monte pas) : `docker compose exec backoffice ela-eval retrieval --label cli`
+   écrit dans le même `eval/reports/` que le backoffice, et le rapport apparaît dans l'historique.
+
+Retour arrière : `git checkout 2.0.0a16`, `cp deploy/docker-compose.override.vps.yml
+docker-compose.override.yml`, `docker compose build backoffice && docker compose up -d backoffice`.
+Les rapports déjà écrits restent dans `eval/reports/`.

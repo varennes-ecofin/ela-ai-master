@@ -37,6 +37,7 @@ from backoffice.routes import activity as activity_routes
 from backoffice.routes import auth as auth_routes
 from backoffice.routes import conversations as conversations_routes
 from backoffice.routes import courses as courses_routes
+from backoffice.routes import evaluation as evaluation_routes
 from backoffice.routes import feedbacks as feedbacks_routes
 from backoffice.routes import health as health_routes
 from backoffice.routes import home as home_routes
@@ -46,6 +47,7 @@ from backoffice.security import LoginLimiter, SessionSigner
 from ela.auth import build_auth_provider
 from ela.config import Settings, get_settings
 from ela.db import jobs as jobs_db
+from ela.eval.reports import ReportIndex
 from ela.jobs.runner import JobRunner
 from ela.log import configure_logging
 
@@ -115,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.auth_provider = build_auth_provider(s)
     app.state.oneshot = OneShotStore(ttl_seconds=15 * 60)
     app.state.jobs = JobRunner(source_dir=s.latex_source_dir)
+    app.state.reports = ReportIndex(Path(s.eval_reports_dir))
 
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -129,6 +132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     root.include_router(pedagogy_routes.router)
     root.include_router(feedbacks_routes.router)
     root.include_router(conversations_routes.router)
+    root.include_router(evaluation_routes.router)
     app.include_router(root)
     app.mount(f"{prefix}/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     if BRAND_DIR.is_dir():

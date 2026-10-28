@@ -36,6 +36,8 @@ COURSE_DELETE_FILE = "course.delete_file"
 COURSE_DELETE = "course.delete"
 COURSE_MOVE = "course.move"
 INGEST_START = "ingest.start"
+EVAL_START = "eval.start"
+EVAL_DELETE = "eval.delete"
 
 
 async def record(
